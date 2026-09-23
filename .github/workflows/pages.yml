@@ -1,4 +1,4 @@
-name: Build and deploy CFITS to GitHub Pages
+name: Build and deploy SIXTH SENSE to GitHub Pages
 on:
   push:
     branches: [main]
@@ -28,6 +28,7 @@ jobs:
           CFITS_ALLOWED_EMAILS: ${{ vars.CFITS_ALLOWED_EMAILS }}
           CFITS_ALLOWED_DOMAINS: ${{ vars.CFITS_ALLOWED_DOMAINS }}
         run: |
+          if [ -z "${{ vars.GOOGLE_CLIENT_ID }}" ]; then echo "::error::Set the GOOGLE_CLIENT_ID repository variable (Settings > Secrets and variables > Actions > Variables)"; exit 1; fi
           python3 build.py "${{ vars.GOOGLE_CLIENT_ID }}"
           mkdir -p _site
           cp dist/CFITS.html _site/index.html
