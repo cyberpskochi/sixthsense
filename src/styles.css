@@ -255,3 +255,7 @@ label.f{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--mu
 .top .search{min-width:190px}
 .top .chip{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:1450px){.top .chip.adm,.top .chip:nth-of-type(1){display:none}}
+#nav a.needcase{opacity:.45}
+#nav a.needcase:hover{opacity:.8}
+.flash{animation:flashRing .6s ease-in-out 4}
+@keyframes flashRing{50%{box-shadow:0 0 0 3px #ff2e88,0 0 28px #ff2e88}}

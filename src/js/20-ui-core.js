@@ -52,11 +52,12 @@ function renderShell() {
 }
 function renderNav() {
   const c = S.cur; const cnt = { accounts: c ? c.accts.length : '', txns: c ? nfmt(c.txns.length) : '', telecom: c ? nfmt(c.telecom.cdr.length) : '', ip: c ? nfmt(c.ip.logs.length) : '', users: isAdmin() && ADM.pending ? ADM.pending + ' new' : '' };
-  $('#nav').innerHTML = NAV.map(([g, items]) => { const vis = items.filter(x => x[4] !== 'admin' || isAdmin()); return vis.length ? `<div class="grp">${g}</div>` + vis.map(([k, ic, t, col]) => `<a data-v="${k}" class="${S.view === k ? 'on' : ''}" style="--pc:${col}">${icon(ic)}${t}${cnt[k] ? `<span class="cnt">${cnt[k]}</span>` : ''}</a>`).join('') : ''; }).join('');
+  $('#nav').innerHTML = NAV.map(([g, items]) => { const vis = items.filter(x => x[4] !== 'admin' || isAdmin()); return vis.length ? `<div class="grp">${g}</div>` + vis.map(([k, ic, t, col]) => `<a data-v="${k}" class="${S.view === k ? 'on' : ''}${!c && !['cases', 'settings', 'backup', 'users'].includes(k) ? ' needcase' : ''}" title="${!c && !['cases', 'settings', 'backup', 'users'].includes(k) ? 'Open a case first' : ''}" style="--pc:${col}">${icon(ic)}${t}${cnt[k] ? `<span class="cnt">${cnt[k]}</span>` : ''}</a>`).join('') : ''; }).join('');
   $$('#nav a').forEach(a => a.onclick = () => { $('#side').classList.remove('open'); go(a.dataset.v); });
 }
 function go(view, arg) {
-  if (!S.cur && !['cases', 'settings', 'backup', 'users'].includes(view)) view = 'cases';
+  const FREE = ['cases', 'settings', 'backup', 'users'];
+  if (!S.cur && !FREE.includes(view)) { toast(S.index.length ? 'Open a case first: click a case tile below.' : 'No case yet: click “＋ New case” or “▶ Load demo case” first.', 'warn', 4500); view = 'cases'; setTimeout(() => $$('#cNew,#cDemo,.tile').forEach(b => { b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 2400); }), 50); }
   if (view === 'users' && !isAdmin()) { toast('Only an admin can manage users.', 'err'); view = S.cur ? 'dashboard' : 'cases'; }
   S.view = view; S.viewArg = arg; killCharts(); renderNav();
   const el = $('#content'); el.scrollTop = 0; el.innerHTML = '';

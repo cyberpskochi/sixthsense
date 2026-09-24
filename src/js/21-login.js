@@ -60,6 +60,7 @@ async function showVaultScreen(msg = '') {
       <label class="f">Confirm passphrase<input type="password" id="vp2" autocomplete="new-password"></label>
       <button class="btn-p" id="vGo">CREATE ENCRYPTED VAULT</button>`}
     <label class="row small muted"><input type="checkbox" id="vSess"> Session-only mode (nothing written to this computer; use Drive backup to keep work)</label>
+    ${exists ? `<div class="center"><a href="#" id="vReset" class="small" style="color:var(--pink)">Forgot passphrase? Reset vault on this computer</a></div>` : ''}
     <div class="row sb"><button class="btn-g btn-sm" id="vOut">⏻ Sign out / switch user</button><span class="small dim" id="vBusy"></span></div>
   </div>`);
   const p1 = $('#vp1', b); p1.focus();
@@ -76,6 +77,13 @@ async function showVaultScreen(msg = '') {
   };
   $('#vGo', b).onclick = doUnlock; $$('input[type=password]', b).forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); }));
   $('#vOut', b).onclick = () => signOut('Signed out');
+  if ($('#vReset', b)) $('#vReset', b).onclick = async e => {
+    e.preventDefault();
+    const v = await promptBox('Reset vault', [{ label: 'A forgotten passphrase cannot be recovered. Resetting permanently DELETES every case stored in this browser for ' + S.user.email + ' (Drive backups are not touched, but need the old passphrase). Type RESET to continue.' }], 'Reset vault');
+    if (!v || v[0].trim().toUpperCase() !== 'RESET') return;
+    try { await Vault.destroy(S.user.email); try { Backend.log('VAULT RESET', 'Local vault wiped after forgotten passphrase'); } catch {} toast('Vault reset. Create a new passphrase.', 'ok'); showVaultScreen('Old vault deleted. Create a new passphrase and write it down safely.'); }
+    catch (er) { toast('Reset failed: ' + er.message, 'err'); }
+  };
 }
 async function signOut(reason) {
   try { Backend.log('SIGN OUT', reason || ''); } catch {}

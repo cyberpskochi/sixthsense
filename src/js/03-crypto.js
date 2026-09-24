@@ -30,6 +30,7 @@ const Vault = {
     return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   },
   async baseKey(pass) { return crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']); },
+  async destroy(email) { const ns = await this.nsFor(email); for (const k of await IDB.keys(ns + ':')) await IDB.del(k); this.lock && this.lock(); },
   async exists(email) { const ns = await this.nsFor(email); return !!(await IDB.get(ns + ':meta')); },
   async create(email, pass) {
     const ns = await this.nsFor(email); const salt = crypto.getRandomValues(new Uint8Array(16));
