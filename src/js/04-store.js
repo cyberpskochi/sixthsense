@@ -62,6 +62,8 @@ async function audit(action, detail = '') {
   const e = { ts: nowStamp(), user: S.user ? S.user.email : 'local', action, detail: String(detail).slice(0, 600), prev };
   e.h = await sha256Hex(prev + '|' + e.ts + '|' + e.user + '|' + e.action + '|' + e.detail);
   log.push(e); S.dirty.add('audit'); scheduleSave();
+  // Central activity log gets only the action type and case ID — never case contents.
+  if (typeof Backend !== 'undefined' && /^(Created case|Opened case|Imported|Generated report|Exported|Backed up|Restored|Deleted Drive backup|Marked disputed|Changed vault passphrase)/.test(action)) Backend.log(action.toUpperCase().slice(0, 40), 'Case ' + S.cur.meta.id);
 }
 async function verifyAudit() {
   let prev = 'GENESIS';

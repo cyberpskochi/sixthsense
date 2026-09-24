@@ -9,6 +9,8 @@ const CONFIG = {
   APP: 'CFITS', APP_NAME: 'SIXTH SENSE', FILE_PREFIX: 'SIXTHSENSE', VERSION: '1.0.0', PARSER_VERSION: 'cfits-parser-1.0',
   // ---- Google OAuth (see SETUP guide). Public client ID only; no secret is ever placed here.
   GOOGLE_CLIENT_ID: '__GOOGLE_CLIENT_ID__',
+  // Access-control backend (Apps Script Web App …/exec). Holds the approved-user list and activity log only.
+  BACKEND_URL: '__BACKEND_URL__',
   // Local (no-Google) mode is disabled in production builds; Google sign-in is mandatory.
   ALLOW_LOCAL_MODE: false,
   // Access gate. Leave both empty to allow any Google account (not recommended).

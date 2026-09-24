@@ -1,63 +1,76 @@
 /* =============================== UI CORE =============================== */
-const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767']; // validated on dark surface #0f1b31
+const SERIES = ['#2f9bff', '#ff6e40', '#00d98b', '#ffb300', '#ff2e88', '#008300', '#b388ff', '#ff4d5e']; // validated on dark surface #0f1b31
 const NAV = [
-  ['Overview', [['dashboard', '◉', 'Dashboard'], ['cases', '▤', 'Cases']]],
-  ['Data', [['import', '⇪', 'Import Data'], ['quality', '✓', 'Data Quality'], ['accounts', '▭', 'Accounts'], ['entities', '◎', 'Entities & Links'], ['txns', '≡', 'Transactions']]],
-  ['Intelligence', [['trail', '⤳', 'Money Trail'], ['network', '⬡', 'Network Graph'], ['telecom', '☏', 'Telecom / CDR'], ['ip', '⌘', 'IP Intelligence'], ['correlation', '⧗', 'Correlation'], ['patterns', '▦', 'Patterns / NDPS']]],
-  ['Action', [['leads', '⚑', 'Leads'], ['requisitions', '✉', 'Requisitions'], ['tasks', '☑', 'Tasks'], ['reports', '⎙', 'Reports']]],
-  ['System', [['backup', '☁', 'Drive Backup'], ['settings', '⚙', 'Settings & Audit']]]
+  ['Overview', [['dashboard', 'grid', 'Dashboard', '#00e5ff'], ['cases', 'folder', 'Cases', '#2979ff']]],
+  ['Data', [['import', 'upload', 'Import Data', '#00ff9d'], ['quality', 'shield', 'Data Quality', '#00e38c'], ['accounts', 'bank', 'Accounts', '#ffb300'], ['entities', 'users', 'Entities & Links', '#b388ff'], ['txns', 'list', 'Transactions', '#00e5ff']]],
+  ['Intelligence', [['trail', 'flow', 'Money Trail', '#ff2e88'], ['network', 'nodes', 'Network Graph', '#b388ff'], ['telecom', 'phone', 'Telecom / CDR', '#00ff9d'], ['ip', 'globe', 'IP Intelligence', '#2979ff'], ['correlation', 'clock', 'Correlation', '#ffb300'], ['patterns', 'chart', 'Patterns / NDPS', '#ff6e40']]],
+  ['Action', [['leads', 'flag', 'Leads', '#ff4d5e'], ['requisitions', 'mail', 'Requisitions', '#ffb300'], ['tasks', 'check', 'Tasks', '#00ff9d'], ['reports', 'doc', 'Reports', '#00e5ff']]],
+  ['System', [['backup', 'cloud', 'Drive Backup', '#2979ff'], ['users', 'ushield', 'Users & Access', '#ff2e88', 'admin'], ['settings', 'gear', 'Settings & Audit', '#8fb3c9']]]
 ];
+const NAV_BY = Object.fromEntries(NAV.flatMap(g => g[1]).map(x => [x[0], x]));
 const VIEWS = {}; let CHARTS = [];
 function killCharts() { CHARTS.forEach(c => { try { c.destroy(); } catch {} }); CHARTS = []; }
 function mkChart(canvas, cfg) {
   if (typeof Chart === 'undefined') return null;
-  Chart.defaults.color = '#8aa0c2'; Chart.defaults.borderColor = 'rgba(40,64,107,.45)'; Chart.defaults.font.family = 'Inter,Segoe UI,system-ui,sans-serif'; Chart.defaults.font.size = 11;
-  cfg.options = Object.assign({ responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { labels: { boxWidth: 10, boxHeight: 10 } }, tooltip: { backgroundColor: '#0b1528', borderColor: '#28406b', borderWidth: 1, titleColor: '#dbe6f7', bodyColor: '#dbe6f7' } } }, cfg.options || {});
+  Chart.defaults.color = '#8fb3c9'; Chart.defaults.borderColor = 'rgba(0,229,255,.12)'; Chart.defaults.font.family = 'Rajdhani,Segoe UI,system-ui,sans-serif'; Chart.defaults.font.size = 12;
+  cfg.options = Object.assign({ responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { labels: { boxWidth: 10, boxHeight: 10 } }, tooltip: { backgroundColor: 'rgba(6,23,42,.95)', borderColor: 'rgba(0,229,255,.45)', borderWidth: 1, titleColor: '#dff6ff', bodyColor: '#dff6ff' } } }, cfg.options || {});
   const ch = new Chart(canvas, cfg); CHARTS.push(ch); return ch;
 }
 
+function isAdmin() { return !!(S.user && S.user.role === 'admin'); }
 function renderShell() {
-  const app = $('#app'); app.hidden = false; $('#boot').hidden = true;
+  const app = $('#app'); app.hidden = false; $('#boot').hidden = true; NetFx.intensity = .55;
+  const c = S.cur;
   app.innerHTML = `
-  ${S.cur && S.cur.meta.demo ? '<div class="demo-banner">DEMO DATA — NOT REAL INVESTIGATION DATA</div>' : ''}
+  ${c && c.meta.demo ? '<div class="demo-banner">DEMO DATA — NOT REAL INVESTIGATION DATA</div>' : ''}
   <div class="layout">
+    <header class="top">
+      <button class="btn-g btn-sm" id="menuBtn" style="display:none">☰</button>
+      <span class="brand-mark"><svg viewBox="0 0 64 64" class="logoSvg"></svg></span>
+      <div class="tb-title">SIXTH SENSE<small>Cyber Crime PS · Kochi City</small></div>
+      <div class="case-pill"><span>${c ? esc(c.meta.conf) + ' · ' + esc(c.meta.type) : 'No case open'}</span><b>${c ? esc(c.meta.crimeNo || c.meta.id) + (c.meta.ps ? ' — ' + esc(c.meta.ps) : '') : 'Select or create a case'}</b></div>
+      <div class="search"><input id="gsearch" placeholder="Search account, mobile, UPI, UTR, IP, IMEI, name…" ${c ? '' : 'disabled'}></div>
+      <span class="grow"></span>
+      <span class="chip on hide-s" title="Case data is encrypted in this browser"><span class="dot"></span>AES-256</span>
+      <span class="chip hide-s ${isAdmin() ? 'adm' : 'on'}" title="${esc(S.user.email)}"><span class="dot"></span>${esc((S.user.name || S.user.email).split(' ')[0])} · ${isAdmin() ? 'ADMIN' : 'USER'}</span>
+      <span class="chip hide-s mono" id="idleChip" title="Auto-lock countdown">⏱ --:--</span>
+      <button class="btn-sm btn-amber" id="lockBtn" title="Lock the vault (keeps you signed in)">${icon('lock').replace('<svg', '<svg width="15" height="15"')} LOCK</button>
+      <button class="btn-sm btn-d" id="outBtn" title="Sign out">${icon('power').replace('<svg', '<svg width="15" height="15"')} SIGN OUT</button>
+      <div class="avatar" title="${esc(S.user.email)}">${S.user.picture ? `<img src="${esc(S.user.picture)}" referrerpolicy="no-referrer" alt="">` : esc((S.user.name || S.user.email)[0].toUpperCase())}</div>
+    </header>
     <aside class="side" id="side">
-      <div class="brand"><span class="brand-mark">◈</span><div><b>SIXTH SENSE</b><small>Financial · Telecom · IP Intel</small></div></div>
       <nav class="nav" id="nav"></nav>
-      <div class="foot">v${CONFIG.VERSION} · AES-256 vault${Vault.sessionOnly ? ' · session-only' : ''}<br>${esc(CONFIG.CREDIT)}</div>
+      <div class="foot">© ARUN R<small>v${CONFIG.VERSION} · AES-256 vault${Vault.sessionOnly ? ' · session-only' : ''}</small></div>
     </aside>
-    <main class="main">
-      <div class="top">
-        <button class="btn-g" id="menuBtn" style="display:none">☰</button>
-        <div class="case-pill"><span class="small muted">${S.cur ? esc(S.cur.meta.conf) + ' · ' + esc(S.cur.meta.type) : 'No case open'}</span><b>${S.cur ? esc(S.cur.meta.crimeNo || S.cur.meta.id) + (S.cur.meta.ps ? ' — ' + esc(S.cur.meta.ps) : '') : 'Select or create a case'}</b></div>
-        <div class="search"><input id="gsearch" placeholder="Search account, mobile, UPI, UTR, IP, IMEI, name, narration…" ${S.cur ? '' : 'disabled'}></div>
-        <span class="grow"></span>
-        <span id="saveState" class="small dim"></span>
-        <button class="btn-sm" id="lockBtn" title="Lock vault">🔒 Lock</button>
-        <div class="avatar" title="${esc(S.user.email)}">${S.user.picture ? `<img src="${esc(S.user.picture)}" referrerpolicy="no-referrer" alt="">` : esc((S.user.name || S.user.email)[0].toUpperCase())}</div>
-      </div>
-      <div class="content" id="content"></div>
-    </main>
+    <main class="main"><div class="content" id="content"></div></main>
   </div>`;
-  renderNav();
+  paintLogos(app); renderNav();
   $('#lockBtn').onclick = () => lockApp('Locked by user');
+  $('#outBtn').onclick = () => signOut('Signed out');
   $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
   const gs = $('#gsearch'); if (gs) gs.addEventListener('keydown', e => { if (e.key === 'Enter' && gs.value.trim()) globalSearch(gs.value.trim()); });
 }
 function renderNav() {
-  const c = S.cur; const cnt = { accounts: c ? c.accts.length : '', txns: c ? nfmt(c.txns.length) : '', telecom: c ? nfmt(c.telecom.cdr.length) : '', ip: c ? nfmt(c.ip.logs.length) : '' };
-  $('#nav').innerHTML = NAV.map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([k, ic, t]) => `<a data-v="${k}" class="${S.view === k ? 'on' : ''}"><span class="ic">${ic}</span>${t}${cnt[k] ? `<span class="cnt">${cnt[k]}</span>` : ''}</a>`).join('')).join('');
+  const c = S.cur; const cnt = { accounts: c ? c.accts.length : '', txns: c ? nfmt(c.txns.length) : '', telecom: c ? nfmt(c.telecom.cdr.length) : '', ip: c ? nfmt(c.ip.logs.length) : '', users: isAdmin() && ADM.pending ? ADM.pending + ' new' : '' };
+  $('#nav').innerHTML = NAV.map(([g, items]) => { const vis = items.filter(x => x[4] !== 'admin' || isAdmin()); return vis.length ? `<div class="grp">${g}</div>` + vis.map(([k, ic, t, col]) => `<a data-v="${k}" class="${S.view === k ? 'on' : ''}" style="--pc:${col}">${icon(ic)}${t}${cnt[k] ? `<span class="cnt">${cnt[k]}</span>` : ''}</a>`).join('') : ''; }).join('');
   $$('#nav a').forEach(a => a.onclick = () => { $('#side').classList.remove('open'); go(a.dataset.v); });
 }
 function go(view, arg) {
-  if (!S.cur && !['cases', 'settings', 'backup'].includes(view)) view = 'cases';
+  if (!S.cur && !['cases', 'settings', 'backup', 'users'].includes(view)) view = 'cases';
+  if (view === 'users' && !isAdmin()) { toast('Only an admin can manage users.', 'err'); view = S.cur ? 'dashboard' : 'cases'; }
   S.view = view; S.viewArg = arg; killCharts(); renderNav();
   const el = $('#content'); el.scrollTop = 0; el.innerHTML = '';
   try { (VIEWS[view] || VIEWS.dashboard)(el, arg); }
   catch (e) { console.error(e); el.innerHTML = `<div class="notice err">This view failed to render: ${esc(e.message)}</div>`; }
 }
-function pageHead(title, sub, actions = '') { return `<div class="crumb">${esc(S.cur ? (S.cur.meta.crimeNo || S.cur.meta.id) : CONFIG.APP_NAME)} › ${esc(title)}</div><div class="pagehead"><div><h2>${esc(title)}</h2>${sub ? `<p>${sub}</p>` : ''}</div><div class="row no-print">${actions}</div></div>`; }
-function kpi(label, value, sub = '', color = 'rgba(34,211,238,.14)') { return `<div class="card kpi" style="--kc:${color}"><div class="l">${esc(label)}</div><div class="v">${value}</div>${sub ? `<div class="s">${sub}</div>` : ''}</div>`; }
+function pageHead(title, sub, actions = '') {
+  const nv = NAV_BY[S.view] || ['', 'grid', '', '#00e5ff'];
+  return `<div class="crumb">${esc(S.cur ? (S.cur.meta.crimeNo || S.cur.meta.id) : CONFIG.APP_NAME)} › ${esc(title)}</div><div class="pagehead"><div class="ph"><div class="hexi" style="--pc:${nv[3]}">${icon(nv[1])}</div><div><h2>${esc(title)}</h2>${sub ? `<p>${sub}</p>` : ''}</div></div><div class="row no-print">${actions}</div></div>`;
+}
+function kpi(label, value, sub = '', color = 'rgba(0,229,255,.3)') {
+  const m = String(color).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/); const solid = m ? `rgb(${m[1]},${m[2]},${m[3]})` : color;
+  return `<div class="card kpi" style="--kc:${color.replace(/,\s*[\d.]+\)$/, ',.35)')};--kc2:${solid}"><div class="pulse"></div><div class="l">${esc(label)}</div><div class="v">${value}</div>${sub ? `<div class="s">${sub}</div>` : ''}</div>`;
+}
 function emptyState(msg, btn) { return `<div class="empty">${msg}${btn ? `<div style="margin-top:10px">${btn}</div>` : ''}</div>`; }
 
 /* ------------------------------ virtual table ------------------------------ */
@@ -92,7 +105,7 @@ function bindRows(host, rows, fn) { $$('tr.click', host).forEach(tr => tr.onclic
 function exportTable(name, cols, rows) {
   const data = [cols.map(c => c.label)].concat(rows.map(r => cols.map(c => { const v = c.x ? c.x(r) : c.get ? c.get(r) : r[c.k]; return safeCell(v == null ? '' : v); })));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), name.slice(0, 30));
-  XLSX.writeFile(wb, `${CONFIG.FILE_PREFIX}_${fileSafe(S.cur.meta.id)}_${fileSafe(name)}.xlsx`); audit('Exported table', name);
+  XLSX.writeFile(wb, `${CONFIG.FILE_PREFIX}_${fileSafe(S.cur ? S.cur.meta.id : 'ADMIN')}_${fileSafe(name)}.xlsx`); audit('Exported table', name);
 }
 
 /* ------------------------------ global search ------------------------------ */
@@ -120,7 +133,11 @@ function globalSearch(q) {
 /* ------------------------------ lock / idle ------------------------------ */
 function touch() { S.lastActivity = Date.now(); }
 ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(e => document.addEventListener(e, touch, { passive: true, capture: true }));
-setInterval(() => { if (Vault.key && Date.now() - S.lastActivity > (S.prefs.autoLockMin || 15) * 60000) lockApp('Auto-locked after inactivity'); }, 20000);
+setInterval(() => {
+  if (!Vault.key) return; const left = (S.prefs.autoLockMin || 15) * 60000 - (Date.now() - S.lastActivity);
+  const ch = $('#idleChip'); if (ch) { const s = Math.max(0, Math.round(left / 1000)); ch.textContent = '⏱ ' + pad(Math.floor(s / 60)) + ':' + pad(s % 60); ch.style.color = s < 60 ? 'var(--red)' : ''; }
+  if (left <= 0) lockApp('Auto-locked after inactivity');
+}, 1000);
 setInterval(async () => { // optional auto-backup (explicitly enabled only)
   if (!Vault.key || !S.cur || !S.prefs.autoBackup || S.cur.meta.demo || !GAuth.valid() || !S.cur._changedSinceBackup) return;
   const last = S.cur._lastAuto || 0; if (Date.now() - last < (S.prefs.autoBackupMin || 30) * 60000) return;
