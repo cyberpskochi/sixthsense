@@ -38,6 +38,8 @@ def build(client_id='__GOOGLE_CLIENT_ID__', out='dist/CFITS.html'):
         items = [x.strip().lower() for x in os.environ.get(env, '').split(',') if x.strip()]
         return json.dumps(items)
     js = js.replace('ALLOWED_EMAILS: [],', 'ALLOWED_EMAILS: ' + as_js_list('CFITS_ALLOWED_EMAILS') + ',', 1)
+    if os.environ.get('CFITS_ALLOW_LOCAL_MODE') == '1':
+        js = js.replace('ALLOW_LOCAL_MODE: false,', 'ALLOW_LOCAL_MODE: true,', 1)
     js = js.replace('ALLOWED_DOMAINS: [],', 'ALLOWED_DOMAINS: ' + as_js_list('CFITS_ALLOWED_DOMAINS') + ',', 1)
     tags = '\n'.join(f'<script src="{CDN + p}" integrity="{sri(f)}" crossorigin="anonymous" referrerpolicy="no-referrer"></script>' for _, p, f in LIBS)
     inline = '\n' + js + '\n'

@@ -75,7 +75,7 @@ async function backupCaseToDrive(c = S.cur) {
   await saveNow();
   const bytes = await Vault.pack(casePackage(c));
   const hash = await sha256Hex(bytes);
-  const name = `CFITS_CASE_${fileSafe(c.meta.id)}_${isoDate(nowWall())}_${pad(new Date().getHours())}${pad(new Date().getMinutes())}.enc`;
+  const name = `${CONFIG.FILE_PREFIX}_CASE_${fileSafe(c.meta.id)}_${isoDate(nowWall())}_${pad(new Date().getHours())}${pad(new Date().getMinutes())}.enc`;
   const f = await Drive.upload(name, bytes, { cfits: '1', caseId: c.meta.id.slice(0, 100), sha256: hash });
   c.meta.lastBackup = nowStamp(); c.meta.backups = (c.meta.backups || []).concat([{ id: f.id, name, at: c.meta.lastBackup, sha256: hash, size: bytes.length }]).slice(-50);
   c._changedSinceBackup = false; markDirty('meta'); await audit('Backed up case to Google Drive', name + ' sha256=' + hash.slice(0, 16));

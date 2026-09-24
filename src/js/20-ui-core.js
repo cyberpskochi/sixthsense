@@ -22,7 +22,7 @@ function renderShell() {
   ${S.cur && S.cur.meta.demo ? '<div class="demo-banner">DEMO DATA — NOT REAL INVESTIGATION DATA</div>' : ''}
   <div class="layout">
     <aside class="side" id="side">
-      <div class="brand"><span class="brand-mark">◈</span><div><b>CFITS</b><small>Financial · Telecom · IP Intel</small></div></div>
+      <div class="brand"><span class="brand-mark">◈</span><div><b>SIXTH SENSE</b><small>Financial · Telecom · IP Intel</small></div></div>
       <nav class="nav" id="nav"></nav>
       <div class="foot">v${CONFIG.VERSION} · AES-256 vault${Vault.sessionOnly ? ' · session-only' : ''}<br>${esc(CONFIG.CREDIT)}</div>
     </aside>
@@ -56,7 +56,7 @@ function go(view, arg) {
   try { (VIEWS[view] || VIEWS.dashboard)(el, arg); }
   catch (e) { console.error(e); el.innerHTML = `<div class="notice err">This view failed to render: ${esc(e.message)}</div>`; }
 }
-function pageHead(title, sub, actions = '') { return `<div class="crumb">${esc(S.cur ? (S.cur.meta.crimeNo || S.cur.meta.id) : 'CFITS')} › ${esc(title)}</div><div class="pagehead"><div><h2>${esc(title)}</h2>${sub ? `<p>${sub}</p>` : ''}</div><div class="row no-print">${actions}</div></div>`; }
+function pageHead(title, sub, actions = '') { return `<div class="crumb">${esc(S.cur ? (S.cur.meta.crimeNo || S.cur.meta.id) : CONFIG.APP_NAME)} › ${esc(title)}</div><div class="pagehead"><div><h2>${esc(title)}</h2>${sub ? `<p>${sub}</p>` : ''}</div><div class="row no-print">${actions}</div></div>`; }
 function kpi(label, value, sub = '', color = 'rgba(34,211,238,.14)') { return `<div class="card kpi" style="--kc:${color}"><div class="l">${esc(label)}</div><div class="v">${value}</div>${sub ? `<div class="s">${sub}</div>` : ''}</div>`; }
 function emptyState(msg, btn) { return `<div class="empty">${msg}${btn ? `<div style="margin-top:10px">${btn}</div>` : ''}</div>`; }
 
@@ -92,7 +92,7 @@ function bindRows(host, rows, fn) { $$('tr.click', host).forEach(tr => tr.onclic
 function exportTable(name, cols, rows) {
   const data = [cols.map(c => c.label)].concat(rows.map(r => cols.map(c => { const v = c.x ? c.x(r) : c.get ? c.get(r) : r[c.k]; return safeCell(v == null ? '' : v); })));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), name.slice(0, 30));
-  XLSX.writeFile(wb, `CFITS_${fileSafe(S.cur.meta.id)}_${fileSafe(name)}.xlsx`); audit('Exported table', name);
+  XLSX.writeFile(wb, `${CONFIG.FILE_PREFIX}_${fileSafe(S.cur.meta.id)}_${fileSafe(name)}.xlsx`); audit('Exported table', name);
 }
 
 /* ------------------------------ global search ------------------------------ */

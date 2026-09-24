@@ -35,7 +35,7 @@ VIEWS.requisitions = el => {
     add('IP logs', ['Account', 'Bank', 'Layer', 'From date'], r.iplog.map(x => [x.acctNo, x.bank, layerName(x.layer), x.from]));
     add('CDR', ['Number', 'Linked to', 'Roles'], r.cdr.map(x => [x.num, x.links, x.roles]));
     add('IPDR', ['IP', 'Port', 'Timestamp IST', 'Timestamp UTC', 'Type', 'Accounts'], r.ipdr.map(x => [x.ip, x.port || '', fmtDT(x.ts), fmtDT(x.ts - 330 * 60000), x.cls.label, x.accts.map(a => (IX.acctById.get(a) || {}).acctNo).join(', ')]));
-    XLSX.writeFile(wb, `CFITS_${fileSafe(S.cur.meta.id)}_Requisitions.xlsx`); audit('Exported requisitions');
+    XLSX.writeFile(wb, `${CONFIG.FILE_PREFIX}_${fileSafe(S.cur.meta.id)}_Requisitions.xlsx`); audit('Exported requisitions');
   };
 };
 

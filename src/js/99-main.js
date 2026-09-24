@@ -4,7 +4,7 @@ window.addEventListener('unhandledrejection', e => { console.error(e.reason); tr
 (async function boot() {
   if (window.top !== window.self) { document.body.innerHTML = ''; return; } // refuse to run inside frames (clickjacking)
   const msg = t => { const m = $('#bootMsg'); if (m) m.textContent = t; };
-  if (!window.isSecureContext || !crypto.subtle) { msg('CFITS must be opened over HTTPS (or localhost) — encryption APIs are unavailable.'); return; }
+  if (!window.isSecureContext || !crypto.subtle) { msg(CONFIG.APP_NAME + ' must be opened over HTTPS (or localhost) — encryption APIs are unavailable.'); return; }
   const missing = ['XLSX', 'pdfjsLib', 'cytoscape', 'Chart', 'jspdf'].filter(k => typeof window[k] === 'undefined');
   if (missing.length) { msg('Could not load: ' + missing.join(', ') + '. Check the internet connection (libraries load from cdn.jsdelivr.net with integrity checks).'); return; }
   try { // pdf.js worker via integrity-checked fetch → blob URL (cross-origin workers are blocked by browsers)

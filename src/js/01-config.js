@@ -1,20 +1,22 @@
 'use strict';
 /* =====================================================================
-   CFITS — Cyber Financial Intelligence & Transaction Tracing System
+   SIXTH SENSE (CFITS engine) — Cyber Financial Intelligence & Transaction Tracing System
    (C) ARUN R — Cyber Crime Police Station, Kochi City
    Local-first. All analysis runs in this browser. Data at rest is
    AES-256-GCM encrypted. Google Drive is used only for encrypted backup.
    ===================================================================== */
 const CONFIG = {
-  APP: 'CFITS', VERSION: '1.0.0', PARSER_VERSION: 'cfits-parser-1.0',
+  APP: 'CFITS', APP_NAME: 'SIXTH SENSE', FILE_PREFIX: 'SIXTHSENSE', VERSION: '1.0.0', PARSER_VERSION: 'cfits-parser-1.0',
   // ---- Google OAuth (see SETUP guide). Public client ID only; no secret is ever placed here.
   GOOGLE_CLIENT_ID: '__GOOGLE_CLIENT_ID__',
+  // Local (no-Google) mode is disabled in production builds; Google sign-in is mandatory.
+  ALLOW_LOCAL_MODE: false,
   // Access gate. Leave both empty to allow any Google account (not recommended).
   // Note: this check runs in the browser; the real protection is the vault encryption.
   ALLOWED_EMAILS: [],            // e.g. ['io1.cyberkochi@gmail.com']
   ALLOWED_DOMAINS: [],           // e.g. ['kerala.gov.in','keralapolice.gov.in']
   DRIVE_SCOPE: 'https://www.googleapis.com/auth/drive.file',
-  DRIVE_FOLDER: 'CFITS Encrypted Backups',
+  DRIVE_FOLDER: 'SIXTH SENSE Encrypted Backups',
   PBKDF2_ITER: 600000,
   MIN_PASSPHRASE: 12,
   AUTO_LOCK_MIN: 15,

@@ -99,7 +99,7 @@ VIEWS.network = el => {
       { selector: 'edge[kind="money"]', style: { 'target-arrow-shape': 'triangle' } },
       { selector: ':selected', style: { 'border-color': '#22d3ee', 'border-width': 4 } }] });
   cy.on('tap', 'node', e => { const id = e.target.id(); if (IX.acctById.has(id)) openAccount(id); else if (id.startsWith('M:')) openNumber(id.slice(2)); else if (id.startsWith('I:')) globalSearch(id.slice(2)); });
-  $('#nPng', el).onclick = () => { const uri = cy.png({ full: true, scale: 2, bg: '#070d1a' }); fetch(uri).then(r => r.blob()).then(b => downloadBlob(b, `CFITS_${fileSafe(S.cur.meta.id)}_network.png`)); };
+  $('#nPng', el).onclick = () => { const uri = cy.png({ full: true, scale: 2, bg: '#070d1a' }); fetch(uri).then(r => r.blob()).then(b => downloadBlob(b, `${CONFIG.FILE_PREFIX}_${fileSafe(S.cur.meta.id)}_network.png`)); };
 }
 function layeredPositions(nodes, edges) {
   const pos = {}; const all = Array.from(nodes.values()); const PER = 16;
