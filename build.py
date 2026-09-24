@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Builds dist/CFITS.html — one self-contained page (libraries from jsDelivr with SRI)."""
-import base64, hashlib, json, pathlib, sys
+import base64, hashlib, json, os, pathlib, sys
 
 ROOT = pathlib.Path(__file__).parent
 SRC = ROOT / 'src'
@@ -33,7 +33,7 @@ def build(client_id='__GOOGLE_CLIENT_ID__', out='dist/CFITS.html'):
     }) + ';\n'
     js = libs_js + '\n'.join(f.read_text() for f in js_files)
     js = js.replace('__GOOGLE_CLIENT_ID__', client_id)
-    import os
+    js = js.replace('__BACKEND_URL__', os.environ.get('SIXTHSENSE_BACKEND_URL', '').strip())
     def as_js_list(env):
         items = [x.strip().lower() for x in os.environ.get(env, '').split(',') if x.strip()]
         return json.dumps(items)
@@ -46,10 +46,10 @@ def build(client_id='__GOOGLE_CLIENT_ID__', out='dist/CFITS.html'):
     h = base64.b64encode(hashlib.sha256(inline.encode()).digest()).decode()
     csp = ("default-src 'none'; "
            f"script-src 'sha256-{h}' https://cdn.jsdelivr.net https://accounts.google.com/gsi/client 'wasm-unsafe-eval'; "
-           "style-src 'unsafe-inline' https://accounts.google.com/gsi/style; "
-           "img-src data: blob: https://*.googleusercontent.com; "
-           "connect-src https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net blob: data:; "
-           "frame-src https://accounts.google.com; worker-src blob:; font-src data:; "
+           "style-src 'unsafe-inline' https://accounts.google.com/gsi/style https://fonts.googleapis.com; "
+           "img-src data: blob: https://*.googleusercontent.com https://*.gstatic.com; "
+           "connect-src https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net https://script.google.com https://script.googleusercontent.com https://api.ipify.org blob: data:; "
+           "frame-src https://accounts.google.com; worker-src blob:; font-src data: https://fonts.gstatic.com; "
            "form-action 'none'; base-uri 'none'; object-src 'none'")
     html = (SRC / 'shell.html').read_text()
     html = html.replace('__CSS__', css).replace('__LIBS__', tags).replace('__CSP__', csp)

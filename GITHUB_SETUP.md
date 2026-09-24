@@ -1,4 +1,4 @@
-# Put CFITS on GitHub (GitHub Pages)
+# Put SIXTH SENSE on GitHub (GitHub Pages)
 
 The repository builds itself. Every time you push to `main`, GitHub Actions downloads the pinned libraries, builds the single page with integrity hashes, and publishes it to GitHub Pages.
 
@@ -6,7 +6,7 @@ The repository builds itself. Every time you push to `main`, GitHub Actions down
 
 1. Sign in at **github.com** (for example the `cyberpskochi` account).
 2. Click **+ → New repository**.
-   - Name: `cfits`
+   - Name: `sixthsense`
    - Visibility: **Public** — GitHub Pages on a free account needs a public repository. That is safe here: the repository holds only code, no case data and no secrets.
    - Leave "Add a README" **unticked**.
 3. Click **Create repository**.
@@ -16,7 +16,7 @@ The repository builds itself. Every time you push to `main`, GitHub Actions down
 ### Option 1 — Command line (keeps the prepared commit)
 Unzip `cfits-github-repo.zip`, open a terminal inside the `cfits` folder and run:
 ```bash
-git remote add origin https://github.com/cyberpskochi/cfits.git
+git remote add origin https://github.com/cyberpskochi/sixthsense.git
 git push -u origin main
 ```
 When git asks for a password, use a **Personal Access Token** (GitHub → Settings → Developer settings → Tokens), not your GitHub password.
@@ -35,13 +35,13 @@ When git asks for a password, use a **Personal Access Token** (GitHub → Settin
 
    | Name | Value | Notes |
    |---|---|---|
-   | `GOOGLE_CLIENT_ID` | `xxxx.apps.googleusercontent.com` | From Google Cloud (SETUP_GUIDE §3). Leave it out to run in local mode. |
+   | `GOOGLE_CLIENT_ID` | `xxxx.apps.googleusercontent.com` | From Google Cloud (SETUP_GUIDE §3). **Required** — sign-in is mandatory. |
    | `CFITS_ALLOWED_EMAILS` | `io1.cyberkochi@gmail.com, sho.cyberkochi@gmail.com` | Comma-separated. |
    | `CFITS_ALLOWED_DOMAINS` | `kerala.gov.in` | Optional. |
 
    Use **Variables**, not Secrets. A client ID is public by design, and the build writes it into the page.
-3. Go to **Actions → "Build and deploy CFITS to GitHub Pages" → Run workflow**. This is only needed the first time; after that every push deploys automatically.
-4. After about 1–2 minutes the app is live at **`https://cyberpskochi.github.io/cfits/`**.
+3. Go to **Actions → "Build and deploy SIXTH SENSE to GitHub Pages" → Run workflow**. This is only needed the first time; after that every push deploys automatically.
+4. After about 1–2 minutes the app is live at **`https://cyberpskochi.github.io/sixthsense/`**.
 
 ## D. Link Google sign-in to the site
 In Google Cloud → Credentials → your OAuth client, add this **Authorised JavaScript origin**:
