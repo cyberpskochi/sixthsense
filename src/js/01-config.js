@@ -11,6 +11,7 @@ const CONFIG = {
   GOOGLE_CLIENT_ID: '__GOOGLE_CLIENT_ID__',
   // Access-control backend (Apps Script Web App …/exec). Holds the approved-user list and activity log only.
   BACKEND_URL: '__BACKEND_URL__',
+  REF_ATM_URL: 'data/atm-ref.enc',
   // Local (no-Google) mode is disabled in production builds; Google sign-in is mandatory.
   ALLOW_LOCAL_MODE: false,
   // Access gate. Leave both empty to allow any Google account (not recommended).
@@ -21,7 +22,7 @@ const CONFIG = {
   DRIVE_FOLDER: 'SIXTH SENSE Encrypted Backups',
   PBKDF2_ITER: 600000,
   MIN_PASSPHRASE: 12,
-  AUTO_LOCK_MIN: 15,
+  AUTO_LOCK_MIN: 30,
   CREDIT: 'Developed by ARUN R, Cyber Crime PS Kochi City'
 };
 const CASE_TYPES = ['Cyber Financial Fraud','Account Takeover','Digital Arrest','Investment Fraud','UPI Fraud','OTP Sharing','Mule Account','NDPS Financial Tracking','Other'];

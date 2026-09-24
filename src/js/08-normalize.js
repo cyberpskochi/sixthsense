@@ -174,10 +174,67 @@ function normNcrp(grid, hdr, opts) {
   const { map } = hdr; const out = [];
   for (let r = hdr.row + (hdr.rows || 1); r < grid.rows.length; r++) {
     const row = grid.rows[r]; const get = f => map[f] !== undefined ? row[map[f]] : '';
-    const acctNo = normAcct(cellText(get('acctNo'))); const utr = cellText(get('utr')).replace(/\s/g, '').toUpperCase();
-    if (!acctNo && !utr) continue;
+    let acctNo = normAcct(cellText(get('acctNo'))), toAcct = normAcct(cellText(get('toAcct')));
+    const fromAcct = normAcct(cellText(get('fromAcct')));
+    // Files without the I4C "Account No./(Wallet/PG/PA) Id" column: the single account column is the layer account.
+    if (map.acctNo === undefined && !fromAcct) { acctNo = toAcct; toAcct = ''; }
+    // Explicit From → To files: the "to" account is the account at this layer.
+    if (map.acctNo === undefined && fromAcct) { acctNo = toAcct; toAcct = ''; }
+    const utr = cellText(get('utr')).replace(/\s/g, '').toUpperCase();
+    if (!acctNo && !utr && !toAcct) continue;
     const lay = parseInt(String(cellText(get('layer'))).replace(/\D/g, '')); const d = parseDateTime(get('date'));
-    out.push({ ackNo: cellText(get('ackNo')), layer: isNaN(lay) ? null : lay, fromAcct: normAcct(cellText(get('fromAcct'))), acctNo, bank: cellText(get('bank')), ifsc: cellText(get('ifsc')).toUpperCase(), utr, amount: parseAmount(get('amount')).v || 0, hold: parseAmount(get('hold')).v || 0, ts: d ? d.ts : null, status: cellText(get('status')), src: { file: opts.fileName, sheet: grid.sheet, row: (grid.rowRef[r] || {}).row } });
+    const ifsc = cellText(get('ifsc')).toUpperCase().replace(/\s/g, '');
+    const status = cellText(get('status'));
+    out.push({ ackNo: cellText(get('ackNo')), layer: isNaN(lay) ? null : lay, fromAcct, acctNo, toAcct: toAcct && toAcct !== acctNo ? toAcct : '', bank: cellText(get('bank')),
+      ifsc: map.acctNo !== undefined && toAcct ? '' : ifsc, toIfsc: map.acctNo !== undefined && toAcct ? ifsc : '',
+      utr, amount: parseAmount(get('amount')).v || 0, disputed: parseAmount(get('disputed')).v || 0, hold: parseAmount(get('hold')).v || 0, ts: d ? d.ts : null, hasTime: d ? d.hasTime : false,
+      status, action: ncrpAction(status + ' ' + cellText(get('remarks'))), remarks: cellText(get('remarks')), atmId: cellText(get('atmId')).toUpperCase().replace(/\s/g, ''), atmPlace: cellText(get('atmPlace')),
+      chequeNo: cellText(get('chequeNo')), mid: cellText(get('mid')), tid: cellText(get('tid')), merchant: cellText(get('merchant')), actionDate: cellText(get('actionDate')),
+      src: { file: opts.fileName, sheet: grid.sheet, row: (grid.rowRef[r] || {}).row } });
+  }
+  return out;
+}
+function ncrpAction(s) {
+  s = String(s || '').toLowerCase();
+  if (/hold|lien|freez/.test(s)) return 'HOLD';
+  if (/atm/.test(s)) return 'ATM';
+  if (/cheque|chq/.test(s)) return 'CHEQUE';
+  if (/aeps|aadhaar/.test(s)) return 'AEPS';
+  if (/pos|purchase|merchant/.test(s)) return 'POS';
+  if (/transfer|moved|sent|credited/.test(s)) return 'TRANSFER';
+  if (/withdraw|cash/.test(s)) return 'CASH';
+  return s.trim() ? 'OTHER' : '';
+}
+const idLike = v => { v = String(v || '').toUpperCase().replace(/\s/g, ''); return v.length >= 5 && v.length <= 16 && /^[A-Z0-9]+$/.test(v) && /\d/.test(v) && /[A-Z]/.test(v) ? v : ''; };
+const cleanAddr = v => String(v || '').replace(/_xludf\./gi, '').replace(/^[=+\-\s]+/, '').replace(/\s+/g, ' ').trim();
+function pinState(pin) {
+  const p = String(pin || '').replace(/\D/g, ''); if (p.length !== 6) return ''; const p2 = +p.slice(0, 2), p3 = +p.slice(0, 3);
+  if (p3 === 160) return 'Chandigarh'; if (p3 === 194) return 'Ladakh'; if (p3 === 403) return 'Goa'; if (p3 === 737) return 'Sikkim'; if (p3 === 744) return 'Andaman & Nicobar';
+  if ([246, 248, 249, 263].includes(p3)) return 'Uttarakhand';
+  if (p3 >= 790 && p3 <= 792) return 'Arunachal Pradesh'; if (p3 === 793 || p3 === 794) return 'Meghalaya'; if (p3 === 795) return 'Manipur'; if (p3 === 796) return 'Mizoram'; if (p3 === 797 || p3 === 798) return 'Nagaland'; if (p3 === 799) return 'Tripura';
+  if ((p3 >= 813 && p3 <= 816) || p3 === 822 || (p3 >= 825 && p3 <= 835)) return 'Jharkhand';
+  const M = { 11: 'Delhi', 12: 'Haryana', 13: 'Haryana', 14: 'Punjab', 15: 'Punjab', 16: 'Punjab', 17: 'Himachal Pradesh', 18: 'Jammu & Kashmir', 19: 'Jammu & Kashmir', 30: 'Rajasthan', 31: 'Rajasthan', 32: 'Rajasthan', 33: 'Rajasthan', 34: 'Rajasthan', 36: 'Gujarat', 37: 'Gujarat', 38: 'Gujarat', 39: 'Gujarat', 40: 'Maharashtra', 41: 'Maharashtra', 42: 'Maharashtra', 43: 'Maharashtra', 44: 'Maharashtra', 45: 'Madhya Pradesh', 46: 'Madhya Pradesh', 47: 'Madhya Pradesh', 48: 'Madhya Pradesh', 49: 'Chhattisgarh', 50: 'Telangana', 51: 'Andhra Pradesh', 52: 'Andhra Pradesh', 53: 'Andhra Pradesh', 56: 'Karnataka', 57: 'Karnataka', 58: 'Karnataka', 59: 'Karnataka', 60: 'Tamil Nadu', 61: 'Tamil Nadu', 62: 'Tamil Nadu', 63: 'Tamil Nadu', 64: 'Tamil Nadu', 67: 'Kerala', 68: 'Kerala', 69: 'Kerala', 70: 'West Bengal', 71: 'West Bengal', 72: 'West Bengal', 73: 'West Bengal', 74: 'West Bengal', 75: 'Odisha', 76: 'Odisha', 77: 'Odisha', 78: 'Assam', 80: 'Bihar', 81: 'Bihar', 82: 'Bihar', 83: 'Bihar', 84: 'Bihar', 85: 'Bihar' };
+  if (p2 >= 20 && p2 <= 28) return 'Uttar Pradesh';
+  return M[p2] || '';
+}
+function normAtm(grid, hdr, opts) {
+  const { map } = hdr; const out = [];
+  for (let r = hdr.row + (hdr.rows || 1); r < grid.rows.length; r++) {
+    const row = grid.rows[r]; const get = f => map[f] !== undefined ? cellText(row[map[f]]) : '';
+    const term = idLike(get('term')), cbs = idLike(get('cbs'));
+    const id = (get('atmId').toUpperCase().replace(/\s/g, '')) || term || cbs; if (!id || id.length < 4) continue;
+    const lat = parseFloat(get('lat')), lon = parseFloat(get('lon')); const okLL = isFinite(lat) && isFinite(lon) && lat > 5 && lat < 38 && lon > 67 && lon < 99;
+    const pin = get('pincode').replace(/\D/g, '').slice(0, 6);
+    out.push({ atmId: id, term: term !== id ? term : '', cbs: cbs !== id ? cbs : '', bank: get('bank'), address: uniq([cleanAddr(get('address')), cleanAddr(get('address2'))].filter(Boolean)).join(', '), city: get('city') || get('postOffice'), district: get('district'), state: get('state') || pinState(pin), pincode: pin, lat: okLL ? lat : null, lon: okLL ? lon : null });
+  }
+  return out;
+}
+function normIfscDb(grid, hdr, opts) {
+  const { map } = hdr; const out = [];
+  for (let r = hdr.row + (hdr.rows || 1); r < grid.rows.length; r++) {
+    const row = grid.rows[r]; const get = f => map[f] !== undefined ? cellText(row[map[f]]) : '';
+    const ifsc = get('ifsc').toUpperCase().replace(/\s/g, ''); if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) continue;
+    out.push({ ifsc, bank: get('bank'), branch: get('branch'), address: get('address'), city: get('city'), district: get('district'), state: get('state'), micr: get('micr'), contact: get('contact'), src: 'master' });
   }
   return out;
 }

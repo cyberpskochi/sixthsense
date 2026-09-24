@@ -118,15 +118,37 @@ const FIELDS = {
     }
   },
   ncrp: {
-    label: 'NCRP money trail / disputed transactions', required: [['acctNo', 'utr']],
+    label: 'NCRP money trail / disputed transactions', required: [['acctNo', 'toAcct', 'utr']],
     f: {
       ackNo: ['acknowledgementno', 'acknowledgmentno', 'ackno', 'complaintno'], layer: ['layer', 'layerno', 'level'],
-      fromAcct: ['fromaccount', 'debitaccount', 'remitteraccount', 'victimaccount', 'senderaccount', 'accountnofrom'],
-      acctNo: ['accountno', 'accountnowalletpgpaid', 'accountnumber', 'beneficiaryaccount', 'toaccount', 'creditaccount', 'acno', 'accountidwalletid', 'accountno.', 'accountnowalletpgpa'],
-      bank: ['bank', 'bankname', 'bankfipayment', 'bankfi', 'bankwalletpgpa', 'bankwalletpgpaname'], ifsc: ['ifsc', 'ifsccode'],
+      fromAcct: ['fromaccount', 'debitaccount', 'remitteraccount', 'victimaccount', 'senderaccount', 'accountnofrom', 'victimaccountno'],
+      acctNo: ['accountnowalletpgpaid', 'accountnowalletpgpa', 'accountidwalletid', 'accountnowalletid', 'accountwalletpgpaid', 'layeraccount', 'suspectaccount'],
+      toAcct: ['accountno', 'accountnumber', 'beneficiaryaccount', 'toaccount', 'creditaccount', 'acno', 'accountno.', 'beneficiaryaccountno'],
+      bank: ['bankfis', 'bankfi', 'bank', 'bankname', 'bankfipayment', 'bankwalletpgpa', 'bankwalletpgpaname'], ifsc: ['ifsccode', 'ifsc'],
       utr: ['transactionidutrnumber', 'utr', 'utrno', 'transactionid', 'referenceno', 'rrn', 'transactionidutr', 'txnid'],
-      amount: ['transactionamount', 'amount', 'disputedamount', 'amountrs', 'txnamount'], hold: ['putonholdamount', 'holdamount', 'lienamount', 'amountonhold', 'onhold'],
-      date: ['transactiondate', 'date', 'txndate', 'dateoftransaction', 'transactiondatetime'], status: ['actiontaken', 'status', 'action', 'remarks']
+      amount: ['transactionamount', 'amount', 'amountrs', 'txnamount'], disputed: ['disputedamount', 'disputeamount'],
+      hold: ['putonholdamount', 'holdamount', 'lienamount', 'amountonhold', 'onhold', 'putonholdamt'],
+      date: ['transactiondate', 'date', 'txndate', 'dateoftransaction', 'transactiondatetime'],
+      status: ['actiontakenbybank', 'actiontaken', 'status', 'action'], remarks: ['remarks', 'remark'],
+      atmId: ['atmid', 'atmidno', 'atmterminalid', 'atmcode'], atmPlace: ['placelocationofatm', 'locationofatm', 'atmlocation', 'placeofatm', 'atmaddress'],
+      chequeNo: ['chequeno', 'chequenumber'], mid: ['mid', 'merchantid'], tid: ['tid', 'terminalid'], merchant: ['merchantname', 'merchant'],
+      actionDate: ['dateofaction', 'actiondate']
+    }
+  },
+  atm: {
+    label: 'ATM master database (ATM ID → location)', required: [['atmId', 'term']],
+    f: {
+      atmId: ['ucnpart1codeprovidedbycisbi', 'ucnpart1code', 'ucn', 'ucncode', 'atmid', 'atmidno', 'atmcode', 'atmno', 'atmterminalid', 'id'],
+      term: ['atmnamecspname', 'terminalid', 'tid', 'atmname', 'terminalcode'], cbs: ['banksinternalsystemcodecbsprovidedbybank', 'banksinternalsystemcode', 'cbscode', 'internalcode'],
+      bank: ['bankname', 'bank', 'owner', 'operator'], address: ['address1', 'address', 'atmaddress', 'siteaddress', 'location', 'place', 'placelocationofatm', 'branchaddress'], address2: ['address2'],
+      city: ['city', 'town', 'centre'], postOffice: ['postoffice', 'po'], district: ['district'], state: ['state'], pincode: ['pincode', 'pin', 'postalcode'], lat: ['latitude', 'lat'], lon: ['longitude', 'long', 'lon', 'lng']
+    }
+  },
+  ifscdb: {
+    label: 'IFSC master list (RBI / bank branch list)', required: [['ifsc']],
+    f: {
+      ifsc: ['ifsc', 'ifsccode'], bank: ['bank', 'bankname'], branch: ['branch', 'branchname', 'office'], address: ['address', 'branchaddress'],
+      city: ['city', 'city1', 'centre', 'center'], district: ['district', 'city2'], state: ['state'], micr: ['micr', 'micrcode'], contact: ['contact', 'phone', 'std']
     }
   },
   sms: {

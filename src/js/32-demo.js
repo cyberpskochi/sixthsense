@@ -3,6 +3,15 @@
    Scenario: "digital arrest" fraud — complainant loses money from 2 accounts to
    50 Layer-1 accounts, onward to 100 Layer-2 and 5 Layer-3 aggregator accounts,
    with KYC, login IP logs, IPDR, CDR (registered + alternate numbers) and OTP SMS. */
+const DEMO_ATMS = [
+  { atmId: 'DM1JMT0011', bank: 'State Bank of India', address: 'Main Road, near Bus Stand (DEMO)', city: 'Jamtara', district: 'Jamtara', state: 'Jharkhand', lat: 23.9626, lon: 86.8034 },
+  { atmId: 'DM2JMT0042', bank: 'Punjab National Bank', address: 'Karmatanr Chowk (DEMO)', city: 'Karmatanr', district: 'Jamtara', state: 'Jharkhand', lat: 24.0120, lon: 86.7290 },
+  { atmId: 'DM1KOL0107', bank: 'Axis Bank', address: 'Esplanade (DEMO)', city: 'Kolkata', district: 'Kolkata', state: 'West Bengal', lat: 22.5646, lon: 88.3510 },
+  { atmId: 'DM3KOL0219', bank: 'HDFC Bank', address: 'Salt Lake Sector V (DEMO)', city: 'Kolkata', district: 'North 24 Parganas', state: 'West Bengal', lat: 22.5760, lon: 88.4330 },
+  { atmId: 'DM1NUH0033', bank: 'Canara Bank', address: 'Punhana Road (DEMO)', city: 'Nuh', district: 'Nuh', state: 'Haryana', lat: 28.1039, lon: 77.0017 },
+  { atmId: 'DM2BTP0058', bank: 'Bank of Baroda', address: 'Kaman (DEMO)', city: 'Bharatpur', district: 'Bharatpur', state: 'Rajasthan', lat: 27.6560, lon: 77.2700 },
+  { atmId: 'DM1DGH0071', bank: 'State Bank of India', address: 'Tower Chowk (DEMO)', city: 'Deoghar', district: 'Deoghar', state: 'Jharkhand', lat: 24.4854, lon: 86.6947 }
+];
 async function buildDemoCase() {
   let seed = 20260818; const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   const ri = (a, b) => a + Math.floor(rnd() * (b - a + 1)); const pick = a => a[Math.floor(rnd() * a.length)];
@@ -45,7 +54,7 @@ async function buildDemoCase() {
   for (const s of seedsIdx) {
     const a = s.to; let rem = s.amt; let tt = s.ts + ri(6, 70) * MIN; const n = ri(1, 3);
     for (let k = 0; k < n && rem > 2000; k++) {
-      if (rnd() < .12) { const w = Math.min(rem, ri(10, 40) * 1000); push(a, { ts: tt, dr: w, cr: 0, ch: 'ATM', narr: `ATM WDL/${ri(100000, 999999)}/DEMO ATM ${pick(['JAMTARA', 'KOLKATA', 'NUH'])}`, utr: '' }); rem -= w; tt += ri(5, 40) * MIN; continue; }
+      if (rnd() < .12) { const w = Math.min(rem, ri(10, 40) * 1000); push(a, { ts: tt, dr: w, cr: 0, ch: 'ATM', narr: `ATM WDL/${pick(DEMO_ATMS).atmId}/DEMO ATM CASH`, utr: '' }); rem -= w; tt += ri(5, 40) * MIN; continue; }
       const to = L2[(L1.indexOf(a) * 2 + k) % 100]; const amt = k === n - 1 ? Math.round(rem * (rnd() < .2 ? .7 : .98)) : Math.round(rem * (0.3 + rnd() * .4)); rem -= amt;
       const mode = rnd(); const u = utr12();
       if (mode < .7) { push(a, { ts: tt, dr: amt, cr: 0, ch: 'IMPS', narr: narr('IMPS', u, to, 'DR'), utr: u }); if (to._stmt !== false) push(to, { ts: tt + MIN, dr: 0, cr: amt, ch: 'IMPS', narr: narr('IMPS', u, a, 'CR'), utr: u }); }
@@ -55,9 +64,9 @@ async function buildDemoCase() {
     }
   }
   // L2 -> L3 / cash ; NDPS-like weekend pattern in L2[20]
-  for (const a of L2) { const list = ev.get(a.id); const ins = list.filter(e => e.cr > 5000 && e.ts >= T0).sort((x, y) => x.ts - y.ts); for (const e of ins) { let rem = e.cr; let tt = e.ts + ri(10, 180) * MIN; if (rnd() < .3) { const w = Math.round(rem * .6); push(a, { ts: tt, dr: w, cr: 0, ch: 'ATM', narr: `ATW-${ri(100000, 999999)}-DEMO ATM`, utr: '' }); rem -= w; tt += 30 * MIN; } if (rnd() < .75) { const to = L3[ri(0, 4)]; const amt = Math.round(rem * .9); const u = utr12(); push(a, { ts: tt, dr: amt, cr: 0, ch: 'IMPS', narr: narr('IMPS', u, to, 'DR'), utr: u }); push(to, { ts: tt + MIN, dr: 0, cr: amt, ch: 'IMPS', narr: narr('IMPS', u, a, 'CR'), utr: u }); } } }
-  const nd = L2[20]; for (let w = 0; w < 6; w++) { const sat = mkTs(2026, 7, 4 + w * 7, 0, 0, 0); for (let k = 0; k < ri(3, 5); k++) push(nd, { ts: sat + (k % 2) * DAY + ri(18, 22) * 60 * MIN + ri(0, 59) * MIN, dr: 0, cr: 5000, ch: 'UPI', narr: `UPI/CR/${utr12()}/${pick(FN)}/${mob()}@ybl`, utr: '' }); push(nd, { ts: sat + DAY + 23 * 60 * MIN, dr: 15000, cr: 0, ch: 'ATM', narr: 'ATM WDL/DEMO ATM', utr: '' }); }
-  for (const a of L3) for (let k = 0; k < 4; k++) push(a, { ts: T0 + ri(1, 3) * DAY + ri(0, 600) * MIN, dr: ri(20, 60) * 1000, cr: 0, ch: 'ATM', narr: 'ATM WDL/DEMO ATM KOLKATA', utr: '' });
+  for (const a of L2) { const list = ev.get(a.id); const ins = list.filter(e => e.cr > 5000 && e.ts >= T0).sort((x, y) => x.ts - y.ts); for (const e of ins) { let rem = e.cr; let tt = e.ts + ri(10, 180) * MIN; if (rnd() < .3) { const w = Math.round(rem * .6); push(a, { ts: tt, dr: w, cr: 0, ch: 'ATM', narr: `ATW-${pick(DEMO_ATMS).atmId}-DEMO ATM`, utr: '' }); rem -= w; tt += 30 * MIN; } if (rnd() < .75) { const to = L3[ri(0, 4)]; const amt = Math.round(rem * .9); const u = utr12(); push(a, { ts: tt, dr: amt, cr: 0, ch: 'IMPS', narr: narr('IMPS', u, to, 'DR'), utr: u }); push(to, { ts: tt + MIN, dr: 0, cr: amt, ch: 'IMPS', narr: narr('IMPS', u, a, 'CR'), utr: u }); } } }
+  const nd = L2[20]; for (let w = 0; w < 6; w++) { const sat = mkTs(2026, 7, 4 + w * 7, 0, 0, 0); for (let k = 0; k < ri(3, 5); k++) push(nd, { ts: sat + (k % 2) * DAY + ri(18, 22) * 60 * MIN + ri(0, 59) * MIN, dr: 0, cr: 5000, ch: 'UPI', narr: `UPI/CR/${utr12()}/${pick(FN)}/${mob()}@ybl`, utr: '' }); push(nd, { ts: sat + DAY + 23 * 60 * MIN, dr: 15000, cr: 0, ch: 'ATM', narr: 'ATM WDL/DM1DGH0071/DEMO ATM', utr: '' }); }
+  for (const a of L3) for (let k = 0; k < 4; k++) push(a, { ts: T0 + ri(1, 3) * DAY + ri(0, 600) * MIN, dr: ri(20, 60) * 1000, cr: 0, ch: 'ATM', narr: `ATM WDL/${pick(DEMO_ATMS.slice(2, 4)).atmId}/DEMO ATM KOLKATA`, utr: '' });
   // 30 L2 accounts have no statement yet (requisition demo)
   const noStmt = new Set(L2.slice(70).map(a => a.id));
   // materialise transactions with running balances
@@ -105,5 +114,23 @@ async function buildDemoCase() {
   c.work.tasks.push({ id: nextId('TASK'), task: 'Request IPDR for CGNAT addresses with source ports', officer: 'DEMO ASI', acct: '', person: '', due: '2026-09-28', priority: 'Normal', status: 'IN PROGRESS', remarks: '', evidence: '', created: nowStamp(), updated: nowStamp() });
   for (const a of c.accts) delete a._bank;
   c.work.imports[0].added = c.txns.length;
-  rebuildIndexes(); PARTS.forEach(p => S.dirty.add(p)); S.derived = null; await audit('Generated synthetic demo case'); await saveNow();
+  rebuildIndexes(); S.derived = null;
+  // Synthetic NCRP report derived from the demo trail + reference data for IFSC / ATM views
+  c.work.atmInfo = Object.fromEntries(DEMO_ATMS.map(a => [a.atmId, a]));
+  const ST = [['Jharkhand', ['Jamtara', 'Deoghar', 'Dhanbad']], ['West Bengal', ['Kolkata', 'Howrah', 'North 24 Parganas']], ['Haryana', ['Nuh', 'Gurugram']], ['Rajasthan', ['Bharatpur', 'Alwar']], ['Bihar', ['Nawada', 'Patna']], ['Uttar Pradesh', ['Mathura', 'Noida']], ['Delhi', ['New Delhi']]];
+  c.work.ifscInfo = {};
+  for (const a of c.accts) if (a.ifsc && !c.work.ifscInfo[a.ifsc]) { const comp = a.role === 'Complainant'; const [stn, ds] = comp ? ['Kerala', ['Ernakulam']] : pick(ST); const dist = pick(ds); c.work.ifscInfo[a.ifsc] = { ifsc: a.ifsc, bank: a.bank || (bankByIfsc(a.ifsc) || {}).name || '', branch: dist.toUpperCase() + ' MAIN (DEMO)', address: 'DEMO BRANCH ADDRESS', city: dist, district: dist, state: stn, src: 'demo' }; }
+  const d = D(); const ncrp = []; const nAck = '31508260023559'; const accNo = id => (IX.acctById.get(id) || {}).acctNo;
+  for (const f of d.flows) {
+    const t = IX.txById.get(f.debit) || {}; const fromA = IX.acctById.get(f.fromAcct); const L = f.layerFrom; if (!fromA) continue;
+    if (L === 0 && f.toAcct) { const to = IX.acctById.get(f.toAcct); ncrp.push({ ackNo: nAck, layer: 1, fromAcct: fromA.acctNo, acctNo: to.acctNo, toAcct: '', bank: to.bank, ifsc: to.ifsc, toIfsc: '', utr: t.utr, amount: f.amt, disputed: f.amt, hold: 0, ts: t.ts, hasTime: t.hasTime, status: 'Transaction on disputed UTR', action: 'OTHER', remarks: '', atmId: '', atmPlace: '' }); continue; }
+    if (L < 1 || L > 3) continue;
+    if (f.toAcct) { const to = IX.acctById.get(f.toAcct); ncrp.push({ ackNo: nAck, layer: L, fromAcct: '', acctNo: fromA.acctNo, toAcct: to.acctNo, bank: fromA.bank, ifsc: fromA.ifsc, toIfsc: to.ifsc, utr: t.utr, amount: f.amt, disputed: 0, hold: 0, ts: t.ts, hasTime: t.hasTime, status: 'Money Transfer to', action: 'TRANSFER', remarks: '', atmId: '', atmPlace: '' }); }
+    else if (t.channel === 'ATM') { const id = extractAtmId(t.narr); const at = c.work.atmInfo[id]; ncrp.push({ ackNo: nAck, layer: L, fromAcct: '', acctNo: fromA.acctNo, toAcct: '', bank: fromA.bank, ifsc: fromA.ifsc, toIfsc: '', utr: t.utr || ('ATM' + t.id), amount: f.amt, disputed: 0, hold: 0, ts: t.ts, hasTime: t.hasTime, status: 'Withdrawal through ATM', action: 'ATM', remarks: '', atmId: id, atmPlace: at ? at.city + ', ' + at.state : '' }); }
+  }
+  const holdAccts = uniq(ncrp.filter(r => r.layer <= 2 && r.action === 'TRANSFER').map(r => r.toAcct)).slice(0, 18);
+  holdAccts.forEach((no, i) => { const a = IX.acctByKey.get(acctKey(no)); if (!a) return; const res = d.acctRes.get(a.id) || {}; const h = Math.round(Math.min(res.tin || 20000, 5000 + ri(2, 40) * 1000)); ncrp.push({ ackNo: nAck, layer: acctLayer(a.id) || 2, fromAcct: '', acctNo: a.acctNo, toAcct: '', bank: a.bank, ifsc: a.ifsc, toIfsc: '', utr: 'HOLD' + String(i + 1).padStart(4, '0'), amount: h, disputed: 0, hold: h, ts: T0 + 2 * DAY, hasTime: true, status: 'Transaction put on hold', action: 'HOLD', remarks: '', atmId: '', atmPlace: '' }); });
+  ncrp.forEach(r => { r.id = nextId('NCRP'); r.imp = imp; r.src = { file: 'DEMO_NCRP_report.xlsx', sheet: 'Sheet1', row: null }; });
+  c.work.ncrp = ncrp;
+  PARTS.forEach(p => S.dirty.add(p)); S.derived = null; await audit('Generated synthetic demo case'); await saveNow();
 }

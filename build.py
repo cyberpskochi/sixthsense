@@ -17,14 +17,17 @@ LIBS = [  # (global, npm path, local file)
     ('chart', 'chart.js@4.4.4/dist/chart.umd.js', V / 'chart.js-4.4.4/package/dist/chart.umd.js'),
     ('jspdf', 'jspdf@2.5.1/dist/jspdf.umd.min.js', V / 'jspdf-2.5.1/package/dist/jspdf.umd.min.js'),
     ('autotable', 'jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js', V / 'jspdf-autotable-3.8.2/package/dist/jspdf.plugin.autotable.min.js'),
+    ('leaflet', 'leaflet@1.9.4/dist/leaflet.js', V / 'leaflet-1.9.4/package/dist/leaflet.js'),
 ]
+LEAFLET_CSS = V / 'leaflet-1.9.4/package/dist/leaflet.css'
 PDF_WORKER = ('pdfjs-dist@3.11.174/build/pdf.worker.min.js', V / 'pdfjs-dist-3.11.174/package/build/pdf.worker.min.js')
 TESS = ('tesseract.js@5.1.1/dist/tesseract.min.js', V / 'tesseract.js-5.1.1/package/dist/tesseract.min.js')
 
 def build(client_id='__GOOGLE_CLIENT_ID__', out='dist/CFITS.html'):
-    css = (SRC / 'styles.css').read_text()
+    css = (SRC / 'styles.css').read_text() + '\n/* Leaflet 1.9.4 (BSD-2) */\n' + LEAFLET_CSS.read_text()
     js_files = sorted((SRC / 'js').glob('*.js'))
     libs_js = 'const LIBS = ' + json.dumps({
+        'scripts': [{'g': g, 'src': CDN + p, 'sri': sri(f)} for g, p, f in LIBS],
         'pdfWorker': {'src': CDN + PDF_WORKER[0], 'sri': sri(PDF_WORKER[1])},
         'tesseract': {'src': CDN + TESS[0], 'sri': sri(TESS[1])},
         'tessWorker': CDN + 'tesseract.js@5.1.1/dist/worker.min.js',
@@ -41,14 +44,14 @@ def build(client_id='__GOOGLE_CLIENT_ID__', out='dist/CFITS.html'):
     if os.environ.get('CFITS_ALLOW_LOCAL_MODE') == '1':
         js = js.replace('ALLOW_LOCAL_MODE: false,', 'ALLOW_LOCAL_MODE: true,', 1)
     js = js.replace('ALLOWED_DOMAINS: [],', 'ALLOWED_DOMAINS: ' + as_js_list('CFITS_ALLOWED_DOMAINS') + ',', 1)
-    tags = '\n'.join(f'<script src="{CDN + p}" integrity="{sri(f)}" crossorigin="anonymous" referrerpolicy="no-referrer"></script>' for _, p, f in LIBS)
+    tags = ''  # libraries are loaded in the background after the sign-in screen appears (see 02b-libs.js)
     inline = '\n' + js + '\n'
     h = base64.b64encode(hashlib.sha256(inline.encode()).digest()).decode()
     csp = ("default-src 'none'; "
            f"script-src 'sha256-{h}' https://cdn.jsdelivr.net https://accounts.google.com/gsi/client 'wasm-unsafe-eval'; "
            "style-src 'unsafe-inline' https://accounts.google.com/gsi/style https://fonts.googleapis.com; "
-           "img-src data: blob: https://*.googleusercontent.com https://*.gstatic.com; "
-           "connect-src https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net https://script.google.com https://script.googleusercontent.com https://api.ipify.org blob: data:; "
+           "img-src data: blob: https://*.googleusercontent.com https://*.gstatic.com https://tile.openstreetmap.org; "
+           "connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net https://script.google.com https://script.googleusercontent.com https://api.ipify.org https://ifsc.razorpay.com blob: data:; "
            "frame-src https://accounts.google.com; worker-src blob:; font-src data: https://fonts.gstatic.com; "
            "form-action 'none'; base-uri 'none'; object-src 'none'")
     html = (SRC / 'shell.html').read_text()

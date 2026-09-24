@@ -61,45 +61,36 @@ async function trailSettings() {
 /* ------------------------------ NETWORK GRAPH ------------------------------ */
 const NET = { f: { accts: 1, ext: 1, mobiles: 1, calls: 1, ip: 1, imei: 1, all: 0 }, layout: 'layered' };
 VIEWS.network = el => {
-  el.innerHTML = pageHead('Network Graph', 'Accounts, money flows, linked numbers, direct calls, shared login IPs and handsets in one picture. Click a node for details. Edge thickness = traced amount.', `<select id="nLay"><option value="layered">Layered (money trail)</option><option value="cose">Force-directed</option></select><button id="nPng">Save PNG</button>`) +
+  el.innerHTML = pageHead('Network Graph', 'Accounts, money flows, linked numbers, direct calls, shared login IPs and handsets in one picture. Switch between Tree, Network and Radial views; click a node for details.') +
     `<div class="row" style="margin-bottom:8px" id="nChips">${[['accts', 'Trail accounts'], ['all', 'All other accounts'], ['ext', 'Exits / unresolved'], ['mobiles', 'Linked mobiles'], ['calls', 'CDR hits'], ['ip', 'Shared IPs'], ['imei', 'Shared IMEI']].map(([k, l]) => `<span class="chip ${NET.f[k] ? 'on' : ''}" data-k="${k}">${l}</span>`).join('')}</div>
-    <div class="legend" style="margin-bottom:8px"><span><i style="background:#ff4d5e"></i>Complainant</span><span><i style="background:#ffb300"></i>Layer 1</span><span><i style="background:#b388ff"></i>Layer 2</span><span><i style="background:#2f9bff"></i>Layer 3+</span><span><i style="background:#5f7599"></i>Exit / other</span><span><i style="background:#00d98b"></i>Mobile</span><span><i style="background:#ff2e88"></i>IP / IMEI</span></div>
-    <div id="graph"></div>`;
-  $('#nLay', el).value = NET.layout; $('#nLay', el).onchange = e => { NET.layout = e.target.value; go('network'); };
+    <div id="graphHost"></div>`;
   $$('#nChips .chip', el).forEach(ch => ch.onclick = () => { NET.f[ch.dataset.k] = NET.f[ch.dataset.k] ? 0 : 1; go('network'); });
-  if (typeof cytoscape === 'undefined') { $('#graph', el).innerHTML = emptyState('Graph library not loaded.'); return; }
   const d = D(); const nodes = new Map(); const edges = [];
-  const lc = l => l === 0 ? '#ff4d5e' : l === 1 ? '#ffb300' : l === 2 ? '#b388ff' : l >= 3 ? '#2f9bff' : '#5f7599';
-  const addA = (id) => { if (nodes.has(id)) return; const a = IX.acctById.get(id); const l = acctLayer(id); nodes.set(id, { data: { id, label: a.acctNo.slice(-6) + (a.holder ? '\n' + a.holder.split(' ')[0] : ''), color: lc(l), layer: l ?? 9, kind: 'acct', size: 26 + Math.min(30, Math.sqrt(((d.acctRes.get(id) || {}).tin || 0) / 2000)) } }); };
+  const lc = l => l === 0 ? '#00ff9d' : l === 1 ? '#ffb300' : l === 2 ? '#00e5ff' : l === 3 ? '#b388ff' : l >= 4 ? '#2f9bff' : '#5f7599';
+  const addA = id => { if (nodes.has(id)) return; const a = IX.acctById.get(id); if (!a) return; const l = acctLayer(id); const r = d.acctRes.get(id) || {};
+    nodes.set(id, { id, label: a.acctNo, sub: [a.holder ? a.holder.slice(0, 18) : '', a.bank || (bankByIfsc(a.ifsc) || {}).name || '', r.tin ? inrShort(r.tin) : ''].filter(Boolean).join(' | ') || 'N/A', badge: l === 0 ? 'V' : l != null ? 'L' + l : '', layer: l ?? 9, color: lc(l), kind: 'acct', size: 22 + Math.min(26, Math.sqrt((r.tin || 0) / 2000)), search: [a.holder, a.ifsc, ...(a.mobiles || [])].join(' '),
+      tip: `<b>${esc(a.acctNo)}</b><br>${esc(a.holder || '')}<br>${esc(a.bank || '')} ${esc(a.ifsc || '')}<br>${esc(layerName(l))}${r.tin ? '<br>Traced in: ' + inr(r.tin) : ''}` }); };
   if (NET.f.accts) { d.compIds.forEach(addA); for (const id of d.acctRes.keys()) addA(id); }
   if (NET.f.all) S.cur.accts.forEach(a => addA(a.id));
   const agg = new Map();
   for (const f of d.flows) {
     if (!nodes.has(f.fromAcct)) continue; let to = f.toAcct;
-    if (!to) { if (!NET.f.ext) continue; to = 'X:' + f.toExt.kind + ':' + f.toExt.label; if (!nodes.has(to)) nodes.set(to, { data: { id: to, label: f.toExt.label.slice(0, 22), color: '#5f7599', layer: 99, kind: 'ext', size: 20 } }); }
+    if (!to) { if (!NET.f.ext) continue; to = 'X:' + f.toExt.kind + ':' + f.toExt.label; if (!nodes.has(to)) nodes.set(to, { id: to, label: f.toExt.label.slice(0, 26), sub: f.toExt.kind === 'EXT' ? 'Not uploaded' : 'Exit: ' + f.toExt.kind, badge: 'X', color: '#5f7599', layer: 99, kind: 'ext', size: 18, shape: 'round-rectangle' }); }
     else if (!nodes.has(to)) continue;
     const k = f.fromAcct + '>' + to; agg.set(k, (agg.get(k) || 0) + f.amt);
   }
-  for (const [k, amt] of agg) { const [s, t] = k.split('>'); edges.push({ data: { id: 'e' + edges.length, source: s, target: t, label: inrShort(amt), w: 1 + Math.min(9, Math.log10(amt + 1) - 2), color: '#2f9bff', kind: 'money' } }); }
-  const accIds = Array.from(nodes.values()).filter(n => n.data.kind === 'acct').map(n => n.data.id);
-  if (NET.f.mobiles) for (const id of accIds) { const a = IX.acctById.get(id); for (const n of acctNumbers(a)) { const nid = 'M:' + n; if (!nodes.has(nid)) nodes.set(nid, { data: { id: nid, label: n, color: '#00d98b', layer: 50, kind: 'mob', size: 16 } }); edges.push({ data: { id: 'e' + edges.length, source: id, target: nid, w: 1, color: '#00d98b', kind: 'owns', label: a.mobiles.includes(n) ? '' : 'alt' } }); } }
-  if (NET.f.calls && S.cur.telecom.cdr.length) for (const x of T().direct.slice(0, 300)) { for (const n of [x.a, x.b]) { const nid = 'M:' + n; if (!nodes.has(nid)) nodes.set(nid, { data: { id: nid, label: n, color: '#00d98b', layer: 50, kind: 'mob', size: 16 } }); } edges.push({ data: { id: 'e' + edges.length, source: 'M:' + x.a, target: 'M:' + x.b, w: 1 + Math.min(6, Math.log2(x.n)), color: x.complainant ? '#ff4d5e' : '#8aa0c2', kind: 'call', label: x.n + ' calls' } }); }
-  if (NET.f.ip) for (const s of IPX().sharedIp.slice(0, 100)) { const nid = 'I:' + s.ip; nodes.set(nid, { data: { id: nid, label: s.ip, color: '#ff2e88', layer: 60, kind: 'ip', size: 18 } }); for (const a of s.accts) { addA(a); edges.push({ data: { id: 'e' + edges.length, source: a, target: nid, w: 1.5, color: '#ff2e88', kind: 'login', label: 'login' } }); } }
-  if (NET.f.imei && S.cur.telecom.cdr.length) for (const s of T().sharedImei) { const nid = 'E:' + s.imei; nodes.set(nid, { data: { id: nid, label: 'IMEI ' + s.imei.slice(-6), color: '#ff2e88', layer: 70, kind: 'imei', size: 16 } }); for (const n of s.nums) { const mid = 'M:' + n; if (!nodes.has(mid)) nodes.set(mid, { data: { id: mid, label: n, color: '#00d98b', layer: 50, kind: 'mob', size: 16 } }); edges.push({ data: { id: 'e' + edges.length, source: mid, target: nid, w: 1.5, color: '#ff2e88', kind: 'imei' } }); } }
-  const els = Array.from(nodes.values()).concat(edges.filter(e => nodes.has(e.data.source) && nodes.has(e.data.target)));
-  if (!nodes.size) { $('#graph', el).innerHTML = emptyState('Nothing to draw yet.'); return; }
-  const layout = NET.layout === 'layered' ? { name: 'preset', positions: layeredPositions(nodes, edges), fit: true, padding: 30 } : { name: 'cose', animate: false, nodeRepulsion: 9000, idealEdgeLength: 90 };
-  const cy = cytoscape({ container: $('#graph', el), elements: els, layout,
-    style: [
-      { selector: 'node', style: { 'background-color': 'data(color)', label: 'data(label)', color: '#dbe6f7', 'font-size': 9, 'text-wrap': 'wrap', 'text-valign': 'bottom', 'text-margin-y': 4, width: 'data(size)', height: 'data(size)', 'border-width': 2, 'border-color': '#0f1b31', 'text-outline-color': '#070d1a', 'text-outline-width': 2 } },
-      { selector: 'node[kind="ext"]', style: { shape: 'round-rectangle', 'border-style': 'dashed', 'border-color': '#8aa0c2' } },
-      { selector: 'node[kind="ip"],node[kind="imei"]', style: { shape: 'diamond' } }, { selector: 'node[kind="mob"]', style: { shape: 'ellipse' } },
-      { selector: 'edge', style: { width: 'data(w)', 'line-color': 'data(color)', 'target-arrow-color': 'data(color)', 'curve-style': 'bezier', opacity: .8, 'font-size': 8, color: '#8aa0c2', 'text-rotation': 'autorotate', 'text-background-color': '#070d1a', 'text-background-opacity': .8, 'text-background-padding': 1 } },
-      { selector: 'edge[label]', style: { label: 'data(label)' } },
-      { selector: 'edge[kind="money"]', style: { 'target-arrow-shape': 'triangle' } },
-      { selector: ':selected', style: { 'border-color': '#22d3ee', 'border-width': 4 } }] });
-  cy.on('tap', 'node', e => { const id = e.target.id(); if (IX.acctById.has(id)) openAccount(id); else if (id.startsWith('M:')) openNumber(id.slice(2)); else if (id.startsWith('I:')) globalSearch(id.slice(2)); });
-  $('#nPng', el).onclick = () => { const uri = cy.png({ full: true, scale: 2, bg: '#070d1a' }); fetch(uri).then(r => r.blob()).then(b => downloadBlob(b, `${CONFIG.FILE_PREFIX}_${fileSafe(S.cur.meta.id)}_network.png`)); };
+  for (const [k, amt] of agg) { const [s, t] = k.split('>'); edges.push({ source: s, target: t, label: inrShort(amt), w: 1 + Math.min(7, Math.log10(amt + 1) - 2), color: '#00e5ff', kind: 'money' }); }
+  const accIds = Array.from(nodes.values()).filter(n => n.kind === 'acct').map(n => n.id);
+  const mobNode = n => { const nid = 'M:' + n; if (!nodes.has(nid)) nodes.set(nid, { id: nid, label: n, sub: 'Mobile', badge: '☎', color: '#00d98b', layer: 50, kind: 'mob', size: 16 }); return nid; };
+  if (NET.f.mobiles) for (const id of accIds) { const a = IX.acctById.get(id); for (const n of acctNumbers(a)) edges.push({ source: id, target: mobNode(n), w: 1, color: '#00d98b', kind: 'owns', dash: 1, label: a.mobiles.includes(n) ? '' : 'alt' }); }
+  if (NET.f.calls && S.cur.telecom.cdr.length) for (const x of T().direct.slice(0, 300)) edges.push({ source: mobNode(x.a), target: mobNode(x.b), w: 1 + Math.min(6, Math.log2(x.n)), color: x.complainant ? '#ff4d5e' : '#8aa0c2', kind: 'call', dash: 1, label: x.n + ' calls' });
+  if (NET.f.ip) for (const s of IPX().sharedIp.slice(0, 100)) { const nid = 'I:' + s.ip; nodes.set(nid, { id: nid, label: s.ip, sub: 'Shared login IP', badge: 'IP', color: '#ff2e88', layer: 60, kind: 'ip', size: 18, shape: 'diamond' }); for (const a of s.accts) { addA(a); edges.push({ source: a, target: nid, w: 1.5, color: '#ff2e88', kind: 'login', dash: 1, label: 'login' }); } }
+  if (NET.f.imei && S.cur.telecom.cdr.length) for (const s of T().sharedImei) { const nid = 'E:' + s.imei; nodes.set(nid, { id: nid, label: 'IMEI ' + s.imei.slice(-6), sub: 'Shared handset', badge: 'IMEI', color: '#ff2e88', layer: 70, kind: 'imei', size: 16, shape: 'diamond' }); for (const n of s.nums) edges.push({ source: mobNode(n), target: nid, w: 1.5, color: '#ff2e88', kind: 'imei', dash: 1 }); }
+  const tin = sum(Array.from(d.acctRes.values()).filter(r => r.layer === 1), r => r.tin);
+  GraphKit.mount($('#graphHost', el), { key: 'network', file: 'network', defaultLayout: 'tree', nodes: Array.from(nodes.values()), edges, roots: Array.from(d.compIds),
+    stats: [{ label: 'Traced to L1', value: inrShort(tin) }, { label: 'Accounts', value: nfmt(accIds.length), cls: '' }],
+    legend: '<span><i style="background:#00ff9d"></i>Complainant</span><span><i style="background:#ffb300"></i>Layer 1</span><span><i style="background:#00e5ff"></i>Layer 2</span><span><i style="background:#b388ff"></i>Layer 3</span><span><i style="background:#2f9bff"></i>Layer 4+</span><span><i style="background:#5f7599"></i>Exit / other</span><span><i style="background:#00d98b"></i>Mobile</span><span><i style="background:#ff2e88"></i>IP / IMEI</span>',
+    onTap: id => { if (IX.acctById.has(id)) openAccount(id); else if (id.startsWith('M:')) openNumber(id.slice(2)); else if (id.startsWith('I:')) globalSearch(id.slice(2)); } });
 }
 function layeredPositions(nodes, edges) {
   const pos = {}; const all = Array.from(nodes.values()); const PER = 16;

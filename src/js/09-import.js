@@ -6,7 +6,9 @@ const IMPORT_KINDS = [
   { k: 'cdr', t: 'CDR', d: 'Call detail records of account-linked and alternate numbers (one or many files).' },
   { k: 'ipdr', t: 'IPDR', d: 'Telecom/ISP IP detail records to resolve a login IP + time (+port) to a subscriber number.' },
   { k: 'ncrp', t: 'NCRP money trail', d: 'NCRP layer-wise transaction / put-on-hold report. Sets layers and marks disputed transactions by UTR.' },
-  { k: 'sms', t: 'SMS / OTP', d: 'Lawfully obtained SMS / OTP records.' }
+  { k: 'sms', t: 'SMS / OTP', d: 'Lawfully obtained SMS / OTP records.' },
+  { k: 'atm', t: 'ATM database', d: 'Master list of ATM IDs with address / district / state / latitude-longitude. Stored once (encrypted) and used for every case.' },
+  { k: 'ifscdb', t: 'IFSC master list', d: 'RBI / bank IFSC branch list (Excel/CSV). Gives branch, district and state offline for every case.' }
 ];
 const IMP = { queue: [], kind: 'statement', opts: { bank: 'AUTO', role: 'AUTO', dup: 'merge', tz: 'IST', target: '', acctNo: '' }, running: false };
 
@@ -60,6 +62,8 @@ function runNormalise(q) {
     else if (q.kind === 'ipdr') res = normIpdr(G.g, G.hdr, opts);
     else if (q.kind === 'ncrp') res = { rows: normNcrp(G.g, G.hdr, opts), rejects: [] };
     else if (q.kind === 'sms') res = { rows: normSms(G.g, G.hdr, opts), rejects: [] };
+    else if (q.kind === 'atm') res = { rows: normAtm(G.g, G.hdr, opts), rejects: [] };
+    else if (q.kind === 'ifscdb') res = { rows: normIfscDb(G.g, G.hdr, opts), rejects: [] };
     G.res = res; q.result.push(G);
     if (q.kind !== 'statement' && res.rows && !res.rows.length) { q.needsReview = true; q.reasons.push('No rows parsed from ' + G.g.sheet); }
   }
@@ -125,9 +129,12 @@ async function commitQueued(q) {
       for (const r of G.res.rows) {
         r.id = nextId('NCRP'); r.imp = impId; c.work.ncrp.push(r); added++;
         if (r.acctNo) { const role = r.layer == null ? '' : r.layer === 0 ? 'Complainant' : r.layer === 1 ? 'Accused (L1)' : r.layer === 2 ? 'Suspect (L2)' : 'Suspect (L3+)'; const a = ensureAcct(r.acctNo, { bank: r.bank, ifsc: r.ifsc, role }); if (r.layer != null && (a.layerNcrp == null || r.layer < a.layerNcrp)) a.layerNcrp = r.layer; if (!a.role && role) a.role = role; }
+        if (r.toAcct) { const tl = r.layer != null ? r.layer + 1 : null; const role = tl == null ? '' : tl === 1 ? 'Accused (L1)' : tl === 2 ? 'Suspect (L2)' : 'Suspect (L3+)'; const a = ensureAcct(r.toAcct, { ifsc: r.toIfsc, bank: (bankByIfsc(r.toIfsc) || {}).name || '', role }); if (!a.ifsc && r.toIfsc) a.ifsc = r.toIfsc; if (tl != null && (a.layerNcrp == null || tl < a.layerNcrp)) a.layerNcrp = tl; if (!a.role && role) a.role = role; }
         if (r.fromAcct && r.layer === 1) { const a = ensureAcct(r.fromAcct, { role: 'Complainant' }); a.role = a.role || 'Complainant'; if (a.layerNcrp == null) a.layerNcrp = 0; }
       }
     } else if (q.kind === 'sms') { for (const r of G.res.rows) { r.id = nextId('SMS'); r.imp = impId; c.telecom.sms.push(r); added++; } }
+    else if (q.kind === 'atm') { const n = await GEO.addAtms(G.res.rows); added += n.added; dups += n.updated; }
+    else if (q.kind === 'ifscdb') { const n = await GEO.addIfsc(G.res.rows); added += n.added; dups += n.updated; }
     if (G.saveTpl && G.sig) {
       S.templates = S.templates.filter(t => !(t.kind === q.kind && t.sig === G.sig));
       S.templates.push({ name: (G.bank !== 'GENERIC' ? bankByCode(G.bank).name : 'Custom') + ' · ' + q.kind + ' · ' + nowStamp(), kind: q.kind, bank: G.bank, sig: G.sig, map: G.hdr.map, rows: G.hdr.rows || 1, dateOrder: G.dateOrder || '', created: nowStamp() });

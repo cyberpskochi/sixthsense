@@ -3,8 +3,8 @@ const SERIES = ['#2f9bff', '#ff6e40', '#00d98b', '#ffb300', '#ff2e88', '#008300'
 const NAV = [
   ['Overview', [['dashboard', 'grid', 'Dashboard', '#00e5ff'], ['cases', 'folder', 'Cases', '#2979ff']]],
   ['Data', [['import', 'upload', 'Import Data', '#00ff9d'], ['quality', 'shield', 'Data Quality', '#00e38c'], ['accounts', 'bank', 'Accounts', '#ffb300'], ['entities', 'users', 'Entities & Links', '#b388ff'], ['txns', 'list', 'Transactions', '#00e5ff']]],
-  ['Intelligence', [['trail', 'flow', 'Money Trail', '#ff2e88'], ['network', 'nodes', 'Network Graph', '#b388ff'], ['telecom', 'phone', 'Telecom / CDR', '#00ff9d'], ['ip', 'globe', 'IP Intelligence', '#2979ff'], ['correlation', 'clock', 'Correlation', '#ffb300'], ['patterns', 'chart', 'Patterns / NDPS', '#ff6e40']]],
-  ['Action', [['leads', 'flag', 'Leads', '#ff4d5e'], ['requisitions', 'mail', 'Requisitions', '#ffb300'], ['tasks', 'check', 'Tasks', '#00ff9d'], ['reports', 'doc', 'Reports', '#00e5ff']]],
+  ['Intelligence', [['ncrp', 'tree', 'NCRP Graph', '#ff2e88'], ['trail', 'flow', 'Money Trail', '#ff2e88'], ['network', 'nodes', 'Network Graph', '#b388ff'], ['geo', 'pin', 'IFSC & ATM Map', '#00e5ff'], ['telecom', 'phone', 'Telecom / CDR', '#00ff9d'], ['ip', 'globe', 'IP Intelligence', '#2979ff'], ['correlation', 'clock', 'Correlation', '#ffb300'], ['patterns', 'chart', 'Patterns / NDPS', '#ff6e40']]],
+  ['Action', [['leads', 'flag', 'Leads', '#ff4d5e'], ['letters', 'letter', 'Letters / 94 BNSS', '#00ff9d'], ['requisitions', 'mail', 'Requisitions', '#ffb300'], ['tasks', 'check', 'Tasks', '#00ff9d'], ['reports', 'doc', 'Reports', '#00e5ff']]],
   ['System', [['backup', 'cloud', 'Drive Backup', '#2979ff'], ['users', 'ushield', 'Users & Access', '#ff2e88', 'admin'], ['settings', 'gear', 'Settings & Audit', '#8fb3c9']]]
 ];
 const NAV_BY = Object.fromEntries(NAV.flatMap(g => g[1]).map(x => [x[0], x]));
@@ -51,11 +51,12 @@ function renderShell() {
   const gs = $('#gsearch'); if (gs) gs.addEventListener('keydown', e => { if (e.key === 'Enter' && gs.value.trim()) globalSearch(gs.value.trim()); });
 }
 function renderNav() {
-  const c = S.cur; const cnt = { accounts: c ? c.accts.length : '', txns: c ? nfmt(c.txns.length) : '', telecom: c ? nfmt(c.telecom.cdr.length) : '', ip: c ? nfmt(c.ip.logs.length) : '', users: isAdmin() && ADM.pending ? ADM.pending + ' new' : '' };
+  const c = S.cur; const cnt = { ncrp: c && c.work.ncrp.length ? nfmt(c.work.ncrp.length) : '', accounts: c ? c.accts.length : '', txns: c ? nfmt(c.txns.length) : '', telecom: c ? nfmt(c.telecom.cdr.length) : '', ip: c ? nfmt(c.ip.logs.length) : '', users: isAdmin() && ADM.pending ? ADM.pending + ' new' : '' };
   $('#nav').innerHTML = NAV.map(([g, items]) => { const vis = items.filter(x => x[4] !== 'admin' || isAdmin()); return vis.length ? `<div class="grp">${g}</div>` + vis.map(([k, ic, t, col]) => `<a data-v="${k}" class="${S.view === k ? 'on' : ''}${!c && !['cases', 'settings', 'backup', 'users'].includes(k) ? ' needcase' : ''}" title="${!c && !['cases', 'settings', 'backup', 'users'].includes(k) ? 'Open a case first' : ''}" style="--pc:${col}">${icon(ic)}${t}${cnt[k] ? `<span class="cnt">${cnt[k]}</span>` : ''}</a>`).join('') : ''; }).join('');
   $$('#nav a').forEach(a => a.onclick = () => { $('#side').classList.remove('open'); go(a.dataset.v); });
 }
 function go(view, arg) {
+  if (!Libs.done) { const el = $('#content'); if (el) el.innerHTML = `<div class="empty" style="margin-top:60px"><div class="spin"></div>Loading analysis modules…</div>`; Libs.load().then(() => go(view, arg)); return; }
   const FREE = ['cases', 'settings', 'backup', 'users'];
   if (!S.cur && !FREE.includes(view)) { toast(S.index.length ? 'Open a case first: click a case tile below.' : 'No case yet: click “＋ New case” or “▶ Load demo case” first.', 'warn', 4500); view = 'cases'; setTimeout(() => $$('#cNew,#cDemo,.tile').forEach(b => { b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 2400); }), 50); }
   if (view === 'users' && !isAdmin()) { toast('Only an admin can manage users.', 'err'); view = S.cur ? 'dashboard' : 'cases'; }
@@ -146,7 +147,8 @@ setInterval(async () => { // optional auto-backup (explicitly enabled only)
 }, 60000);
 async function lockApp(reason) {
   try { await saveNow(); } catch {}
-  Vault.lock(); S.cur = null; S.derived = null; S.index = []; killCharts(); $('#modalRoot').innerHTML = '';
-  $('#app').innerHTML = ''; $('#app').hidden = true; showVaultScreen(reason);
+  try { await Vault.forget(); } catch {}
+  Vault.lock(); GEO.reset(); S.cur = null; S.derived = null; S.index = []; killCharts(); $('#modalRoot').innerHTML = '';
+  $('#app').innerHTML = ''; $('#app').hidden = true; showVaultScreen(reason, true);
 }
 window.addEventListener('beforeunload', e => { if (S.dirty.size) { saveNow(); e.preventDefault(); e.returnValue = ''; } });

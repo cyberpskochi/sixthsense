@@ -12,6 +12,7 @@
  * Script properties (Project Settings → Script properties):
  *   CLIENT_ID    = the OAuth Web client ID (…apps.googleusercontent.com)
  *   ADMIN_EMAIL  = the main admin's Gmail (cannot be blocked or deleted)
+ *   REF_KEY      = (optional) key that unlocks the encrypted ATM reference file for approved users
  *
  * Deploy → New deployment → Web app → Execute as: Me · Who has access: Anyone
  */
@@ -45,6 +46,13 @@ function doPost(e) {
     if (a === 'check') return out_({ ok: true, status: me ? me.status : 'unknown', role: me ? me.role : 'user' });
 
     if (!me || me.status !== 'approved') return out_({ ok: false, error: 'Access not approved' });
+
+    if (a === 'refKey') {
+      var k = PropertiesService.getScriptProperties().getProperty('REF_KEY');
+      if (!k) return out_({ ok: false, error: 'ATM reference key not set on the access server (Script property REF_KEY)' });
+      log_(who.email, me.name, 'REF DATA KEY', 'Encrypted ATM reference data unlocked', ip);
+      return out_({ ok: true, key: k });
+    }
 
     if (a === 'log') {
       var en = req.entry || {};
@@ -118,30 +126,36 @@ function verify_(token) {
 
 /* ---------------- storage ---------------- */
 function cfg_() { var p = PropertiesService.getScriptProperties(); return { clientId: String(p.getProperty('CLIENT_ID') || '').trim(), admin: String(p.getProperty('ADMIN_EMAIL') || '').toLowerCase().trim() }; }
+var _SS = null, _USERS = null;
 function book_() {
+  if (_SS) return _SS;
   var p = PropertiesService.getScriptProperties(); var id = p.getProperty('SHEET_ID'); var ss = null;
   if (id) { try { ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; } }
   if (!ss) { ss = SpreadsheetApp.create(SHEET_NAME); p.setProperty('SHEET_ID', ss.getId()); }
   sheet_(ss, 'Users', USER_COLS); sheet_(ss, 'Logs', LOG_COLS);
   var def = ss.getSheetByName('Sheet1'); if (def && ss.getSheets().length > 2) ss.deleteSheet(def);
-  return ss;
+  _SS = ss; return ss;
 }
 function sheet_(ss, name, cols) { var sh = ss.getSheetByName(name); if (!sh) { sh = ss.insertSheet(name); sh.appendRow(cols); sh.setFrozenRows(1); } return sh; }
+function fresh_() { _USERS = null; }
 function users_() { return book_().getSheetByName('Users'); }
 function readUsers_() {
+  if (_USERS) return _USERS;
   var sh = users_(); var v = sh.getDataRange().getValues(); var out = [];
   for (var i = 1; i < v.length; i++) { if (!v[i][0]) continue; var o = { _row: i + 1 }; USER_COLS.forEach(function (k, j) { o[k] = v[i][j] instanceof Date ? v[i][j].toISOString() : String(v[i][j] || ''); }); out.push(o); }
-  return out;
+  _USERS = out; return out;
 }
 function findUser_(email) { email = String(email || '').toLowerCase(); var us = readUsers_(); for (var i = 0; i < us.length; i++) if (us[i].email.toLowerCase() === email) return us[i]; return null; }
 function withLock_(fn) { var l = LockService.getScriptLock(); l.waitLock(15000); try { return fn(); } finally { l.releaseLock(); } }
-function appendUser_(u) { withLock_(function () { users_().appendRow(USER_COLS.map(function (k) { return safe_(u[k] || ''); })); }); }
-function writeUser_(u) { withLock_(function () { users_().getRange(u._row, 1, 1, USER_COLS.length).setValues([USER_COLS.map(function (k) { return safe_(u[k] || ''); })]); }); }
-function deleteUser_(email) { return withLock_(function () { var u = findUser_(email); if (!u) return false; users_().deleteRow(u._row); return true; }); }
+function appendUser_(u) { fresh_(); withLock_(function () { users_().appendRow(USER_COLS.map(function (k) { return safe_(u[k] || ''); })); }); }
+function writeUser_(u) { fresh_(); withLock_(function () { users_().getRange(u._row, 1, 1, USER_COLS.length).setValues([USER_COLS.map(function (k) { return safe_(u[k] || ''); })]); }); }
+function deleteUser_(email) { return withLock_(function () { fresh_(); var u = findUser_(email); fresh_(); if (!u) return false; users_().deleteRow(u._row); return true; }); }
 function ensureMainAdmin_(admin) {
-  if (!admin) return; var u = findUser_(admin);
+  if (!admin) return; var cache = CacheService.getScriptCache(); if (cache.get('mainok_' + admin)) return;
+  var u = findUser_(admin);
   if (!u) appendUser_({ email: admin, name: '', role: 'admin', status: 'approved', addedAt: now_(), addedBy: 'setup', lastLogin: '', lastIP: '', note: 'main admin' });
   else if (u.role !== 'admin' || u.status !== 'approved' || u.note !== 'main admin') { u.role = 'admin'; u.status = 'approved'; u.note = 'main admin'; writeUser_(u); }
+  cache.put('mainok_' + admin, '1', 600);
 }
 function log_(email, name, action, detail, ip) { withLock_(function () { book_().getSheetByName('Logs').appendRow([now_(), safe_(email), safe_(name || ''), safe_(action), safe_(detail || ''), safe_(ip || '')]); }); }
 function readLogs_(limit) {

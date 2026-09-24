@@ -48,6 +48,17 @@ const Vault = {
     Object.assign(this, { email, ns, key, base }); return true;
   },
   lock() { this.key = null; this.base = null; },
+  /* Trusted-computer mode: the derived AES key is kept in IndexedDB as a NON-EXTRACTABLE
+     CryptoKey (the raw key bytes can never be read by any script) until it expires. */
+  async remember(hours) { if (!this.key || !this.ns) return; await IDB.put(this.ns + ':remember', { key: this.key, base: this.base, exp: Date.now() + hours * 3600000, hours }); },
+  async recall(email) {
+    const ns = await this.nsFor(email); const r = await IDB.get(ns + ':remember'); if (!r) return false;
+    if (!(r.exp > Date.now()) || !(r.key instanceof CryptoKey)) { await IDB.del(ns + ':remember'); return false; }
+    const meta = await IDB.get(ns + ':meta'); if (!meta) return false;
+    try { await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64.dec(meta.iv) }, r.key, meta.ver); } catch { await IDB.del(ns + ':remember'); return false; }
+    Object.assign(this, { email: String(email).toLowerCase(), ns, key: r.key, base: r.base }); this.rememberedUntil = r.exp; return true;
+  },
+  async forget(email) { const ns = email ? await this.nsFor(email) : this.ns; if (ns) await IDB.del(ns + ':remember'); this.rememberedUntil = 0; },
   async encObj(obj, key = this.key) {
     const iv = crypto.getRandomValues(new Uint8Array(12)); const z = await gzip(JSON.stringify(obj));
     return { iv: b64.enc(iv), ct: await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, z) };
@@ -62,7 +73,8 @@ const Vault = {
   async keys(prefix) { const ks = await IDB.keys(this.ns + ':' + prefix); return ks.map(k => k.slice(this.ns.length + 1)); },
   async changePass(oldPass, newPass) {
     await this.unlock(this.email, oldPass);
-    const keys = (await IDB.keys(this.ns + ':')).filter(k => !k.endsWith(':meta'));
+    const keys = (await IDB.keys(this.ns + ':')).filter(k => !k.endsWith(':meta') && !k.endsWith(':remember'));
+    await this.forget();
     const plain = []; for (const k of keys) plain.push([k, await this.decObj(await IDB.get(k))]);
     const email = this.email; await this.create(email, newPass);
     for (const [k, o] of plain) await IDB.put(k, await this.encObj(o));

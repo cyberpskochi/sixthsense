@@ -49,3 +49,10 @@ The easier option is **Audience → Publish app → In production**. SIXTH SENSE
 
 ## Updating Code.gs later
 Deploy → **Manage deployments** → pencil icon → Version: **New version** → Deploy. The URL stays the same.
+
+## Encrypted ATM reference data (optional, recommended)
+- The file `data/atm-ref.enc` in the repository is the ATM database, encrypted with AES-256-GCM. On its own it cannot be read.
+- The key is stored only in the access server: go to **Project Settings → Script properties** and add `REF_KEY` = the key from `ATM_KEY.txt`. After that, **delete ATM_KEY.txt**.
+- When an approved officer opens IFSC & ATM Map, NCRP Graph or Letters, the app asks the access server for the key over HTTPS. The key is kept in memory only, and each request is logged as "REF DATA KEY". Blocked or deleted users can no longer get the key.
+- To update the ATM data, run `python3 tools/make_atm_ref.py NEW_ATM.xlsx <REF_KEY>` on a trusted computer, then upload the new `data/atm-ref.enc`. Never upload the Excel file itself.
+- After pasting a new Code.gs, redeploy: **Deploy → Manage deployments → ✏️ → Version: New version → Deploy**. The URL stays the same.

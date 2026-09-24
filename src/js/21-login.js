@@ -12,6 +12,7 @@ function bootCard(inner) {
 const GLOGO = '<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 38.2 44 33 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
 function showLogin(msg = '', kind = 'notice') {
   const g = GAuth.configured();
+  if (g) { GAuth.loadGis().catch(() => {}); if (Backend.on() && !Backend.ipP) Backend.ipP = Backend.publicIP(); } // warm up while the officer reads the screen
   const b = bootCard(`<div class="lock-form">
     ${msg ? `<div class="${kind === 'ok' ? 'notice info' : kind === 'err' ? 'notice err' : 'notice'}">${esc(msg)}</div>` : ''}
     ${!g && !CONFIG.ALLOW_LOCAL_MODE ? `<div class="notice err"><b>Google sign-in is not configured for this deployment.</b><br>The administrator must add the GOOGLE_CLIENT_ID repository variable and re-run the build workflow. Access is blocked until then.</div>`
@@ -30,7 +31,7 @@ function showLogin(msg = '', kind = 'notice') {
       if (!u.email_verified) throw new Error('Google e-mail address is not verified');
       let role = 'user';
       if (Backend.on()) {
-        busy.textContent = 'VERIFYING ACCESS…'; Backend.ip = await Backend.publicIP();
+        busy.textContent = 'VERIFYING ACCESS…'; Backend.ip = await Promise.race([Backend.ipP || Backend.publicIP(), new Promise(r => setTimeout(() => r(''), 1500))]); Backend.ipP = null;
         const r = await Backend.call('login', { name: u.name || '' });
         if (r.status !== 'approved') {
           GAuth.signOut();
@@ -47,8 +48,13 @@ function showLogin(msg = '', kind = 'notice') {
   };
   else if ($('#locGo', b)) $('#locGo', b).onclick = () => { const n = $('#locName', b).value.trim(); if (n.length < 3) return toast('Enter a name or e-mail', 'warn'); S.user = { email: n.toLowerCase(), name: n, google: false, role: 'admin' }; showVaultScreen(); };
 }
-async function showVaultScreen(msg = '') {
+async function afterUnlock() {
+  await loadIndex(); S.lastActivity = Date.now(); S.view = 'cases'; renderShell(); go('cases');
+  if (isAdmin() && Backend.on()) Backend.call('listUsers').then(r => { ADM.users = r.users || []; ADM.pending = ADM.users.filter(u => u.status === 'pending').length; ADM.mainAdmin = r.mainAdmin || ''; renderNav(); if (ADM.pending) toast(`${ADM.pending} user(s) waiting for approval — see Users & Access`, 'warn', 7000); }).catch(() => {});
+}
+async function showVaultScreen(msg = '', noRecall = false) {
   const exists = await Vault.exists(S.user.email);
+  if (exists && !noRecall) { try { if (await Vault.recall(S.user.email)) { Vault.sessionOnly = false; await afterUnlock(); toast('Vault opened without passphrase (30-minute window) until ' + new Date(Vault.rememberedUntil).toLocaleString('en-IN'), 'ok', 5000); return; } } catch {} }
   const b = bootCard(`<div class="lock-form">
     <div class="row" style="justify-content:center"><div class="avatar">${S.user.picture ? `<img src="${esc(S.user.picture)}" referrerpolicy="no-referrer" alt="">` : esc(S.user.email[0].toUpperCase())}</div><div><b>${esc(S.user.name || S.user.email)}</b><div class="small muted">${esc(S.user.email)} ${S.user.google ? badge('Google', 'blue') : badge('Local', 'gray')} ${S.user.role === 'admin' ? badge('Admin', 'pink') : ''}</div></div></div>
     ${msg ? `<div class="notice info">${esc(msg)}</div>` : ''}
@@ -59,7 +65,9 @@ async function showVaultScreen(msg = '') {
       <div class="prog"><i id="vpStr"></i></div><div id="vpTxt" class="small dim"></div>
       <label class="f">Confirm passphrase<input type="password" id="vp2" autocomplete="new-password"></label>
       <button class="btn-p" id="vGo">CREATE ENCRYPTED VAULT</button>`}
-    <label class="row small muted"><input type="checkbox" id="vSess"> Session-only mode (nothing written to this computer; use Drive backup to keep work)</label>
+    <label class="row small muted"><input type="checkbox" id="vRem" checked> <span>Don't ask for the passphrase again for 30 minutes on this computer</span></label>
+    <div class="small dim" style="margin-top:-6px">After 30 minutes, LOCK or SIGN OUT, the passphrase is asked again. Google sign-in is always required.</div>
+    <label class="row small muted"><input type="checkbox" id="vSess"> <span>Session-only mode (nothing written to this computer; use Drive backup to keep work)</span></label>
     ${exists ? `<div class="center"><a href="#" id="vReset" class="small" style="color:var(--pink)">Forgot passphrase? Reset vault on this computer</a></div>` : ''}
     <div class="row sb"><button class="btn-g btn-sm" id="vOut">⏻ Sign out / switch user</button><span class="small dim" id="vBusy"></span></div>
   </div>`);
@@ -71,8 +79,8 @@ async function showVaultScreen(msg = '') {
       if (exists) await Vault.unlock(S.user.email, pass);
       else { if (pass.length < CONFIG.MIN_PASSPHRASE) throw new Error(`Passphrase must be at least ${CONFIG.MIN_PASSPHRASE} characters`); if (pass !== $('#vp2', b).value) throw new Error('Passphrases do not match'); if (passStrength(pass).pct < 50) throw new Error('Passphrase too weak — use a longer phrase'); await Vault.create(S.user.email, pass); }
       Vault.sessionOnly = $('#vSess', b).checked;
-      await loadIndex(); S.lastActivity = Date.now(); S.view = 'cases'; renderShell(); go('cases');
-      if (isAdmin() && Backend.on()) Backend.call('listUsers').then(r => { ADM.users = r.users || []; ADM.pending = ADM.users.filter(u => u.status === 'pending').length; ADM.mainAdmin = r.mainAdmin || ''; renderNav(); if (ADM.pending) toast(`${ADM.pending} user(s) waiting for approval — see Users & Access`, 'warn', 7000); }).catch(() => {});
+      if ($('#vRem', b).checked && !Vault.sessionOnly) { await Vault.remember(0.5); try { Backend.log('TRUSTED DEVICE', 'Vault kept unlocked for 30 min'); } catch {} } else await Vault.forget();
+      await afterUnlock();
     } catch (e) { $('#vBusy', b).textContent = ''; $('#vGo', b).disabled = false; toast(e.message, 'err'); p1.select(); }
   };
   $('#vGo', b).onclick = doUnlock; $$('input[type=password]', b).forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); }));
@@ -88,7 +96,8 @@ async function showVaultScreen(msg = '') {
 async function signOut(reason) {
   try { Backend.log('SIGN OUT', reason || ''); } catch {}
   try { await saveNow(); } catch {}
-  Vault.lock(); S.cur = null; S.derived = null; S.index = []; killCharts(); $('#modalRoot').innerHTML = '';
+  try { await Vault.forget(); } catch {}
+  Vault.lock(); GEO.reset(); S.cur = null; S.derived = null; S.index = []; killCharts(); $('#modalRoot').innerHTML = '';
   $('#app').innerHTML = ''; $('#app').hidden = true;
   setTimeout(() => GAuth.signOut(), 400); S.user = null; ADM.users = []; ADM.pending = 0;
   showLogin(reason, /withdrawn|blocked/i.test(reason || '') ? 'err' : 'ok');
