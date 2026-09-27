@@ -458,3 +458,28 @@ body.pro input,body.pro select,body.pro textarea{background:#0c1526;border-color
 .nd-tbl tr.nd-first td{border-top:1px solid var(--line2)}.nd-tbl tr.nd-same td{border-top:none}.nd-tbl a{color:var(--cyan);text-decoration:none}
 .nd-tbl mark{background:rgba(245,185,66,.35);color:#fff;border-radius:2px}
 .nd-tbl td:last-child{white-space:nowrap;width:1%}.nd-tbl td:first-child{width:28%}
+
+/* ===== Brand: circuit-head logo, cyan → violet → pink ===== */
+:root{--cyan:#43dcff;--violet:#b48cff;--mag:#e27dff;--pink:#e27dff;--brand:linear-gradient(90deg,#43dcff 0%,#8fb4ff 45%,#c28cff 75%,#e27dff 100%)}
+body.pro{--bg:#08090f;--bg2:#0e1019;--panel:#10121c;--panel2:#161927;--line:rgba(170,150,255,.14);--line2:rgba(170,150,255,.3);
+  --cyan:#5fd6ff;--cyan2:#45b8e6;--violet:#b99cff;--mag:#dd8cff;--blue:#7cb3ff;--text:#ecebff;--muted:#aeb0cc;--dim:#737693;
+  background:radial-gradient(900px 520px at 85% -10%,rgba(178,108,255,.14),transparent 60%),radial-gradient(800px 500px at -10% 110%,rgba(67,220,255,.10),transparent 60%),#08090f}
+body.pro .side,body.pro .top{background:#0b0c15}
+body.pro .tbl th,body.pro .vt .vh,body.pro .layer-col .lh{background:#171a2a!important}
+body.pro .btn-p,body.pro button.btn-p{background:linear-gradient(120deg,#2fb6e8,#7a6cf0 55%,#b86ae8);border-color:transparent;color:#fff}
+body.pro .btn-p:hover:not(:disabled){background:linear-gradient(120deg,#45c4f0,#8b7cff 55%,#c77cf2);filter:none;color:#fff}
+body.pro button,body.pro .btn{background:rgba(120,140,255,.07);border-color:rgba(150,160,255,.4)}
+body.pro .nav a.on,body.pro .nav a.active{background:linear-gradient(90deg,rgba(95,214,255,.14),rgba(185,156,255,.10));color:#fff}
+body.pro input,body.pro select,body.pro textarea{background:#0b0d17}
+.logoImg{display:block;width:100%;height:100%;object-fit:contain}
+.brand-mark{width:44px;height:44px}.brand-mark .logoImg{filter:drop-shadow(0 0 6px rgba(160,120,255,.45))}
+.tb-title{background:var(--brand);-webkit-background-clip:text;background-clip:text;color:transparent!important}
+.tb-title small{-webkit-text-fill-color:var(--muted);color:var(--muted)}
+.lock-logo{width:170px;height:170px;margin:-6px auto 4px}.lock-logo .logoImg{filter:drop-shadow(0 0 18px rgba(150,110,255,.45)) drop-shadow(0 0 10px rgba(67,220,255,.35))}
+.boot-card h1.ss-title{font-family:'Orbitron','Segoe UI',Arial,sans-serif;font-size:32px;font-weight:800;letter-spacing:.12em;margin:4px 0 6px;background:var(--brand);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none;filter:drop-shadow(0 0 10px rgba(150,120,255,.45))}
+.ss-tag{font-size:16px;line-height:1.5;color:#9fc4ff;margin-bottom:6px}.ss-tag span{color:#c3a8ff}
+.boot-card{background:rgba(12,13,22,.88);border-color:rgba(170,150,255,.22)}
+.boot-card::before,.boot-card::after{border-color:#9b8cff}
+body .gbtn,body.pro .gbtn,body.pro button.gbtn{--c:#1f2937;background:#fff!important;color:#1f2937!important;border:1px solid #fff!important;font-weight:700;padding:12px;opacity:1;visibility:visible;justify-content:center;width:100%;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+body .gbtn:hover:not(:disabled),body.pro .gbtn:hover:not(:disabled){background:#f1f3f8!important;color:#111!important;box-shadow:0 0 0 3px rgba(150,120,255,.45),0 4px 18px rgba(0,0,0,.35)}
+body .gbtn:disabled{opacity:.75}

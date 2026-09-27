@@ -35,13 +35,14 @@ const LOGO_SVG = `<defs><linearGradient id="ssg1" x1="0" y1="0" x2="1" y2="1"><s
 <circle cx="32" cy="29" r="6.5" fill="none" stroke="#00ff9d" stroke-width="2.2"/><circle cx="32" cy="29" r="2.5" fill="#00ff9d"/>
 <path d="M32 9v6M32 43v8M22 47l4-5M42 47l-4-5" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round" opacity=".7"/>
 <circle cx="32" cy="9" r="2" fill="#00e5ff"/><circle cx="32" cy="51" r="2" fill="#00e5ff"/><circle cx="21" cy="48" r="1.8" fill="#ff2e88"/><circle cx="43" cy="48" r="1.8" fill="#ff2e88"/>`;
-function paintLogos(root = document) { $$('svg.logoSvg', root).forEach(s => s.innerHTML = LOGO_SVG); }
+function setFavicon() { let l = document.querySelector('link[rel=icon]'); if (!l) { l = document.createElement('link'); l.rel = 'icon'; document.head.appendChild(l); } if (l.href !== BRAND.F) { l.type = 'image/png'; l.href = BRAND.F; } }
+function paintLogos(root = document) { $$('svg.logoSvg', root).forEach(s => { const i = document.createElement('img'); i.className = 'logoImg'; i.alt = 'SIXTH SENSE'; i.src = s.closest('.lock-logo') ? BRAND.L : BRAND.S; s.replaceWith(i); }); setFavicon(); }
 
 /* Theme: 'pro' (calm, professional — default) or 'neon' (animated). A per-computer display preference only. */
 const Theme = {
   get() { try { return localStorage.getItem('ss-theme') || 'pro'; } catch { return 'pro'; } },
   set(v) { try { localStorage.setItem('ss-theme', v); } catch { } this.apply(); },
-  apply() { document.body.classList.toggle('pro', this.get() === 'pro'); const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = this.get() === 'pro' ? '#0b1220' : '#020912'; }
+  apply() { document.body.classList.toggle('pro', this.get() === 'pro'); const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = this.get() === 'pro' ? '#08090f' : '#020912'; }
 };
 Theme.apply();
 const NetFx = {
