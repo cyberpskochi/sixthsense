@@ -82,21 +82,42 @@ const Vault = {
   /* Portable encrypted package (Drive / file export). Key derived from the same
      passphrase with a fresh salt; the header carries only KDF parameters.     */
   async pack(obj) {
-    const salt = crypto.getRandomValues(new Uint8Array(16)); const key = await this.deriveFrom(this.base, salt);
-    const iv = crypto.getRandomValues(new Uint8Array(12)); const z = await gzip(JSON.stringify(obj));
-    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, z);
-    const header = new TextEncoder().encode(JSON.stringify({ app: 'CFITS', fmt: 1, kdf: 'PBKDF2-SHA256', iter: CONFIG.PBKDF2_ITER, salt: b64.enc(salt), iv: b64.enc(iv), cipher: 'AES-256-GCM', gz: true }));
+    /* fmt 2: payload encrypted with a random data key; the data key is wrapped by the passphrase key
+       and, when the officer has created one, by the Backup Key — so either can restore the package. */
+    const dek = crypto.getRandomValues(new Uint8Array(32)); const iv = crypto.getRandomValues(new Uint8Array(12)); const z = await gzip(JSON.stringify(obj));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await crypto.subtle.importKey('raw', dek, 'AES-GCM', false, ['encrypt']), z);
+    const wrap = async (base, iter) => { const salt = crypto.getRandomValues(new Uint8Array(16)), wiv = crypto.getRandomValues(new Uint8Array(12)); const k = await this.deriveFrom(base, salt, iter); return { salt: b64.enc(salt), iv: b64.enc(wiv), iter, k: b64.enc(new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: wiv }, k, dek))) }; };
+    const wraps = { pw: await wrap(this.base, CONFIG.PBKDF2_ITER) };
+    let bk = null; try { bk = await this.get('backupKey'); } catch { }
+    if (bk && bk.code) wraps.bk = Object.assign(await wrap(await this.baseKey(Vault.normBk(bk.code)), 200000), { id: bk.id });
+    const header = new TextEncoder().encode(JSON.stringify({ app: 'CFITS', fmt: 2, kdf: 'PBKDF2-SHA256', cipher: 'AES-256-GCM', gz: true, iv: b64.enc(iv), wraps }));
     const out = new Uint8Array(4 + header.length + ct.byteLength); new DataView(out.buffer).setUint32(0, header.length);
     out.set(header, 4); out.set(new Uint8Array(ct), 4 + header.length); return out;
   },
+  normBk(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); },
+  isBk(s) { return /^[A-Z2-9]{24}$/.test(this.normBk(s)); },
+  newBk() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const r = crypto.getRandomValues(new Uint8Array(24)); const c = Array.from(r, x => A[x % 32]).join(''); return c.match(/.{4}/g).join('-'); },
+  /* restores with: the current vault passphrase (default), another passphrase, or a Backup Key */
   async unpack(buf, pass) {
     buf = new Uint8Array(buf); const hl = new DataView(buf.buffer, buf.byteOffset).getUint32(0);
     const header = JSON.parse(new TextDecoder().decode(buf.slice(4, 4 + hl)));
     if (header.app !== 'CFITS') throw new Error('Not a CFITS package');
-    const base = pass ? await this.baseKey(pass) : this.base;
-    const key = await this.deriveFrom(base, b64.dec(header.salt), header.iter);
-    let z; try { z = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64.dec(header.iv) }, key, buf.slice(4 + hl)); }
-    catch { throw new Error('Decryption failed — wrong passphrase or corrupted/tampered file'); }
+    const body = buf.slice(4 + hl); const fail = () => new Error('Decryption failed — wrong passphrase / backup key, or the file is corrupted or tampered');
+    if (header.fmt !== 2) {
+      const base = pass ? await this.baseKey(pass) : this.base;
+      const key = await this.deriveFrom(base, b64.dec(header.salt), header.iter);
+      let z; try { z = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64.dec(header.iv) }, key, body); } catch { throw fail(); }
+      return JSON.parse(await gunzip(z));
+    }
+    const tryWrap = async (w, base) => { if (!w || !base) return null; try { const k = await this.deriveFrom(base, b64.dec(w.salt), w.iter); return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64.dec(w.iv) }, k, b64.dec(w.k))); } catch { return null; } };
+    const W = header.wraps || {}; let dek = null;
+    if (pass && this.isBk(pass)) dek = await tryWrap(W.bk, await this.baseKey(this.normBk(pass)));
+    if (!dek && pass) dek = await tryWrap(W.pw, await this.baseKey(pass));
+    if (!dek && !pass) dek = await tryWrap(W.pw, this.base);
+    if (!dek && !pass && W.bk) { let bk = null; try { bk = await this.get('backupKey'); } catch { } if (bk && bk.code) dek = await tryWrap(W.bk, await this.baseKey(this.normBk(bk.code))); }
+    if (!dek) throw fail();
+    let z; try { z = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64.dec(header.iv) }, await crypto.subtle.importKey('raw', dek, 'AES-GCM', false, ['decrypt']), body); } catch { throw fail(); }
     return JSON.parse(await gunzip(z));
-  }
+  },
+  hasBkWrap(buf) { try { buf = new Uint8Array(buf); const hl = new DataView(buf.buffer, buf.byteOffset).getUint32(0); const h = JSON.parse(new TextDecoder().decode(buf.slice(4, 4 + hl))); return !!(h.wraps && h.wraps.bk); } catch { return false; } }
 };

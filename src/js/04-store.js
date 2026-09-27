@@ -113,3 +113,22 @@ function buildNumberInfo() {
   return m;
 }
 function numLabel(n) { const i = IX.numInfo.get(n); if (!i) return n; return n + ' (' + uniq(i.links.map(l => l.kind === 'Investigation number' ? l.role : l.kind.replace(' mobile', '').replace('Alternate number', 'Alt'))).join(', ') + ')'; }
+/* ---------- deleting data inside a case ---------- */
+/* Removes every record that came from one uploaded file. Accounts that exist only because of that file are removed too. */
+function deleteImport(impId) {
+  const c = S.cur; const n0 = { t: c.txns.length, cdr: c.telecom.cdr.length, sms: c.telecom.sms.length, ipl: c.ip.logs.length, ipdr: c.ip.ipdr.length, ncrp: c.work.ncrp.length };
+  const keep = r => r.imp !== impId;
+  c.txns = c.txns.filter(keep); c.telecom.cdr = c.telecom.cdr.filter(keep); c.telecom.cdr.forEach((r, i) => r.i = i); c.telecom.sms = c.telecom.sms.filter(keep);
+  c.ip.logs = c.ip.logs.filter(keep); c.ip.ipdr = c.ip.ipdr.filter(keep); c.work.ncrp = c.work.ncrp.filter(keep);
+  const withTx = new Set(c.txns.map(t => t.acctId)); const ncrpAcc = new Set(c.work.ncrp.flatMap(r => [acctKey(r.acctNo), acctKey(r.fromAcct), acctKey(r.toAcct)]).filter(Boolean));
+  let accDel = 0;
+  c.accts = c.accts.filter(a => { a.sources = (a.sources || []).filter(s => s !== impId); const only = !a.sources.length && !withTx.has(a.id) && !ncrpAcc.has(acctKey(a.acctNo)) && !a.manual && !a.role && !(a.holder && !a.kyc?.src); if (only) { accDel++; return false; } return true; });
+  const rec = c.work.imports.find(x => x.id === impId); c.work.imports = c.work.imports.filter(x => x.id !== impId);
+  const out = { txns: n0.t - c.txns.length, cdr: n0.cdr - c.telecom.cdr.length, sms: n0.sms - c.telecom.sms.length, iplogs: n0.ipl - c.ip.logs.length, ipdr: n0.ipdr - c.ip.ipdr.length, ncrp: n0.ncrp - c.work.ncrp.length, accounts: accDel };
+  c.intel = null; rebuildIndexes(); markDirty(...PARTS); return { rec, out };
+}
+/* Wipes all uploaded data (statements, NCRP, CDR, IP, KYC-derived accounts) but keeps the case details, tasks and audit log. */
+function clearCaseData() {
+  const c = S.cur; c.txns = []; c.accts = []; c.telecom.cdr = []; c.telecom.sms = []; c.telecom.meta = {}; c.ip.logs = []; c.ip.ipdr = []; c.work.ncrp = []; c.work.imports = []; c.work.numbers = []; c.work.disputed = []; c.work.verif = {}; c.work.ipinfo = {}; c.intel = null;
+  rebuildIndexes(); markDirty(...PARTS);
+}

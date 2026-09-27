@@ -31,7 +31,7 @@ function renderShell() {
     <header class="top">
       <button class="btn-g btn-sm" id="menuBtn" style="display:none">☰</button>
       <span class="brand-mark"><svg viewBox="0 0 64 64" class="logoSvg"></svg></span>
-      <div class="tb-title">SIXTH SENSE<small>Cyber Crime PS · Kochi City</small></div>
+      <div class="tb-title"><span class="tb-name">SIXTH SENSE</span><small>See Beyond the Data · Detect. Analyse. Act.</small></div>
       <div class="case-pill"><span>${c ? esc(c.meta.conf) + ' · ' + esc(c.meta.type) : 'No case open'}</span><b>${c ? esc(c.meta.crimeNo || c.meta.id) + (c.meta.ps ? ' — ' + esc(c.meta.ps) : '') : 'Select or create a case'}</b></div>
       <div class="search"><input id="gsearch" placeholder="Search account, mobile, UPI, UTR, IP, IMEI, name…" ${c ? '' : 'disabled'}></div>
       <span class="grow"></span>

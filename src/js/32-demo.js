@@ -22,7 +22,7 @@ async function buildDemoCase() {
   const mob = () => String(ri(6, 9)) + String(ri(100000000, 999999999));
   const acno = () => String(ri(1, 9)) + Array.from({ length: ri(10, 14) }, () => ri(0, 9)).join('');
   const utr12 = () => String(ri(6, 6)) + Array.from({ length: 11 }, () => ri(0, 9)).join('');
-  await createCase({ id: 'DEMO-CASE', crimeNo: 'DEMO Cr. No. 999/2026', ps: 'Cyber Crime PS, Kochi City (DEMO)', district: 'Ernakulam', io: 'DEMO Inspector', type: 'Digital Arrest', regDate: '2026-08-20', status: 'Under Investigation', conf: 'CONFIDENTIAL', remarks: 'SYNTHETIC DEMO DATA — NOT REAL INVESTIGATION DATA', demo: true });
+  await createCase({ id: 'DEMO-CASE', crimeNo: 'DEMO Cr. No. 999/2026', ps: 'DEMO Police Station', district: 'Ernakulam', io: 'DEMO Inspector', type: 'Digital Arrest', regDate: '2026-08-20', status: 'Under Investigation', conf: 'CONFIDENTIAL', remarks: 'SYNTHETIC DEMO DATA — NOT REAL INVESTIGATION DATA', demo: true });
   const c = S.cur; const imp = nextId('IMP'); c.work.imports.push({ id: imp, file: 'DEMO_SYNTHETIC_DATA', size: 0, hash: 'demo', kind: 'demo', type: 'SYNTHETIC', bank: '', at: nowStamp(), by: S.user.email, added: 0, dups: 0, rejects: [], rejectCount: 0, accts: [], reviewed: false, balFails: 0, ocrPages: 0 });
   const T0 = mkTs(2026, 8, 18, 10, 0, 0); const MIN = 60000, DAY = 864e5;
   const ev = new Map(); // acctId -> events

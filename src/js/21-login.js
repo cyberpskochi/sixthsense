@@ -4,7 +4,7 @@ function bootCard(inner) {
   b.innerHTML = `<div class="boot-card">
     <div class="lock-logo"><svg viewBox="0 0 64 64" class="logoSvg"></svg></div>
     <h1 class="ss-title">SIXTH SENSE</h1><div class="ss-tag">See Beyond the Data.<br><span>Detect. Analyse. Act.</span></div>
-    <p class="org">Cyber Crime Police Station · Kochi City</p>${inner}
+${inner}
     <div class="lock-foot">GOOGLE SIGN-IN · ADMIN-APPROVED ACCESS · AES-256-GCM · IP-LOGGED</div></div>
     <div class="credit">© ARUN R</div>`;
   paintLogos(b); return b;

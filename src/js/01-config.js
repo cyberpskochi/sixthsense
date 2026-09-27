@@ -1,7 +1,7 @@
 'use strict';
 /* =====================================================================
    SIXTH SENSE (CFITS engine) — Cyber Financial Intelligence & Transaction Tracing System
-   (C) ARUN R — Cyber Crime Police Station, Kochi City
+   (C) ARUN R
    Local-first. All analysis runs in this browser. Data at rest is
    AES-256-GCM encrypted. Google Drive is used only for encrypted backup.
    ===================================================================== */
@@ -24,7 +24,7 @@ const CONFIG = {
   PBKDF2_ITER: 600000,
   MIN_PASSPHRASE: 12,
   AUTO_LOCK_MIN: 30,
-  CREDIT: 'Developed by ARUN R, Cyber Crime PS Kochi City'
+  CREDIT: 'Developed by ARUN R'
 };
 const CASE_TYPES = ['Cyber Financial Fraud','Account Takeover','Digital Arrest','Investment Fraud','UPI Fraud','OTP Sharing','Mule Account','NDPS Financial Tracking','Other'];
 const CASE_STATUS = ['Under Investigation','Charge-sheeted','Referred','Closed'];

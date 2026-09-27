@@ -3,7 +3,7 @@
    given only to approved officers) + a few contacts published on providers' own websites that were
    missing from the list + contacts the officer adds (stored encrypted in the vault).
    Copy-to-clipboard only — no export.                                                              */
-const NCAT = { BANK: ['Banks', '#00e5ff'], PAY: ['Payments · Wallets · PG', '#00ff9d'], TEL: ['Telecom · ISP', '#ffb300'], SOC: ['Social media · Messaging', '#ff5aa5'], ECOM: ['E-commerce · Travel · Services', '#b388ff'], TECH: ['Email · Cloud · Tech', '#60a5fa'], DOM: ['Registrars · Hosting', '#9ccc65'], CRYPTO: ['Crypto exchanges', '#ffd54f'], GOV: ['Government · Regulators', '#90caf9'], POL: ['Police cyber nodal', '#ff8a65'], OTH: ['Other', '#8fb3c9'] };
+const NCAT = { BANK: ['Banks', '#00e5ff'], PAY: ['Payments · Wallets · PG', '#00ff9d'], TEL: ['Telecom · ISP', '#ffb300'], SOC: ['Social media · Messaging', '#ff5aa5'], ECOM: ['E-commerce · Travel · Services', '#b388ff'], TECH: ['Email · Cloud · Tech', '#60a5fa'], DOM: ['Registrars · Hosting', '#9ccc65'], CRYPTO: ['Crypto exchanges', '#ffd54f'], GOV: ['Government · Regulators', '#90caf9'], POL: ['Police cyber nodal', '#ff8a65'], COUR: ['Courier · Logistics', '#ffab40'], APPS: ['App developers', '#80deea'], WEB: ['Websites · Content', '#f48fb1'], OTH: ['Other', '#8fb3c9'] };
 /* [stems (email domain without TLD), name, category, sub-type, IFSC prefix, aliases] */
 const NODAL_ORGS = [
   ['sbi|sbbj|sbhyd|statebank', 'State Bank of India', 'BANK', 'Public sector bank', 'SBIN', 'SBI; State Bank of Bikaner & Jaipur (merged)'],
@@ -169,13 +169,15 @@ const NODAL = {
     const byName = new Map(); const nk = s => String(s || '').toLowerCase().replace(/\(.*?\)|—.*$/g, '').replace(/\b(ltd|limited|pvt|private|the|co|company|inc)\b\.?/g, '').replace(/[^a-z0-9]/g, '');
     for (const o of orgs.values()) [o.name].concat(o.aliases).forEach(n => { const k = nk(n); if (k.length > 2 && !byName.has(k)) byName.set(k, o); });
     const have = new Set(); for (const o of orgs.values()) o.contacts.forEach(c => c.email && have.add(c.email));
-    const cmap = { 'bank': 'BANK', 'telecom / isp': 'TEL', 'payments / wallet': 'PAY', 'payment gateway': 'PAY', 'card network': 'PAY', 'social media': 'SOC', 'messaging': 'SOC', 'tech platform': 'TECH', 'e-commerce': 'ECOM', 'classifieds': 'ECOM', 'travel / mobility': 'ECOM', 'food delivery': 'ECOM', 'regulator / govt': 'GOV' };
+    const cmap = { 'courier / logistics': 'COUR', 'registrar / hosting': 'DOM', 'app developer': 'APPS', 'app store / platform': 'TECH', 'food / quick commerce': 'ECOM', 'website / content platform': 'WEB', 'bank': 'BANK', 'telecom / isp': 'TEL', 'payments / wallet': 'PAY', 'payment gateway': 'PAY', 'card network': 'PAY', 'social media': 'SOC', 'messaging': 'SOC', 'tech platform': 'TECH', 'e-commerce': 'ECOM', 'classifieds': 'ECOM', 'travel / mobility': 'ECOM', 'food delivery': 'ECOM', 'regulator / govt': 'GOV' };
     for (const e of doc.official || []) {
-      let base = [e.entity].concat(e.aliases || []).map(n => byName.get(nk(n))).find(Boolean) || null; let made = null;
-      const own = () => base || made || (made = get('o:' + nk(e.entity), { name: e.entity, cat: cmap[String(e.category || '').toLowerCase()] || 'OTH', sub: e.sub || '', aliases: e.aliases || [] }));
+      let base = [e.entity].concat(e.aliases || []).map(n => byName.get(nk(n))).find(Boolean) || null; let made = null; const list = e.confidence === 'list';
+      const own = () => base || made || (made = get('o:' + nk(e.entity), { name: e.entity, cat: cmap[String(e.category || '').toLowerCase()] || 'OTH', sub: e.sub || '', aliases: (e.aliases || []).filter(Boolean) }), byName.set(nk(e.entity), made), made);
       for (const c of e.contacts || []) { if (c.email && have.has(c.email.toLowerCase())) continue; if (!c.email && !c.phone && !c.portal) continue;
-        const st = c.email && this.stemOf(c.email.split('@')[1]); const o = st && stem2.has(st) ? fromDef(stem2.get(st)) : own(); if (o === own() || !o.web) { if (e.web && !o.web && o === own()) o.web = e.web; if (e.ifsc && !o.ifsc && o === own()) o.ifsc = e.ifsc; }
-        o.contacts.push({ who: [c.name, c.designation && c.designation !== c.role ? c.designation : '', c.role].filter(Boolean).join(' · '), email: (c.email || '').toLowerCase(), phone: c.phone || '', portal: c.portal || c.url || '', address: c.address || '', src: 'Official website' + (e.checked ? ' (checked ' + e.checked.split('-').reverse().join('/') + ')' : ''), year: 2026, tags: ['Official site'], note: c.note || e.note || '' }); if (c.email) have.add(c.email.toLowerCase()); }
+        const st = c.email && this.stemOf(c.email.split('@')[1]); const o = st && stem2.has(st) ? fromDef(stem2.get(st)) : (base || made || (st && !NODAL_GENERIC.test(st) && orgs.get('d:' + st)) || own());
+        { const lc = cmap[String(e.category || '').toLowerCase()]; if (list && ['COUR', 'DOM', 'WEB', 'APPS'].includes(lc) && !o.known && o.cat !== 'POL') o.cat = lc; }
+        const pd = String(c.phone || '').replace(/\D/g, '').slice(-10); if (!c.email && pd && o.contacts.some(x => String(x.phone).replace(/\D/g, '').includes(pd))) continue; if (o === own() || !o.web) { if (e.web && !o.web && o === own()) o.web = e.web; if (e.ifsc && !o.ifsc && o === own()) o.ifsc = e.ifsc; }
+        o.contacts.push({ who: [c.name, c.designation && c.designation !== c.role ? c.designation : '', c.role].filter(Boolean).join(' · '), email: (c.email || '').toLowerCase(), phone: c.phone || '', portal: c.portal || c.url || '', address: c.address || '', src: (list ? 'Provider contact list' : 'Official website') + (e.checked ? ' (checked ' + e.checked.split('-').reverse().join('/') + ')' : ''), year: 2026, tags: list ? [] : ['Official site'], note: c.note || e.note || '' }); if (c.email) have.add(c.email.toLowerCase()); }
     }
     this.orgs = Array.from(orgs.values()).filter(o => o.contacts.length).map(o => Object.assign(o, { domains: Array.from(o.domains) }));
     this.applyUser();
@@ -189,7 +191,8 @@ const NODAL = {
     const rank = c => (c.mine ? 50 : 0) + (c.tier === 1 ? 30 : c.tier === 2 ? 15 : 0) + (c.tags.includes('LEA') ? 8 : 0) + (c.tags.includes('Official site') ? 6 : 0) + (c.tags.includes('Nodal') ? 4 : 0) + (/nodal|pno|lea|cyber|fraud|grievance/i.test(c.email) ? 3 : 0) + (c.who ? 2 : 0) + (c.phone ? 1 : 0) + ((c.year || 2015) - 2015) / 4;
     for (const o of this.orgs) o.contacts.sort((a, b) => rank(b) - rank(a));
     for (const o of this.orgs) { o.hay = [o.name, o.sub, o.ifsc].concat(o.aliases, o.domains, uniq(o.contacts.map(c => c.listed).filter(Boolean))).join(' | ').toLowerCase(); o.n = o.contacts.length; }
-    this.orgs.sort((a, b) => (b.known ? 1 : 0) - (a.known ? 1 : 0) || b.n - a.n || a.name.localeCompare(b.name));
+    for (const o of this.orgs) { o.sk = (/^[a-z]/i.test(o.name.trim()) ? '0' : '1') + o.name.trim().toLowerCase(); for (const c of o.contacts) c.h = (c.who + ' ' + (c.listed || '') + ' ' + c.email + ' ' + (c.phone || '') + ' ' + (c.address || '') + ' ' + (c.note || '')).toLowerCase(); }
+    this.orgs.sort((a, b) => a.sk < b.sk ? -1 : a.sk > b.sk ? 1 : 0);
   },
   async load(keyB64) {
     if (this.loaded) return; if (this._p) return this._p;
@@ -226,11 +229,11 @@ const NODAL = {
       else {
         const name = o.name.toLowerCase(); const orgAll = wr.every(r => r.test(o.hay));
         if (name === lq || o.aliases.some(a => a.toLowerCase() === lq)) score = 100; else if (orgAll && name.startsWith(words[0])) score = 80; else if (orgAll) score = 60;
-        if (!score) { hits = o.contacts.filter(c => { const h = (c.who + ' ' + (c.listed || '') + ' ' + c.email + ' ' + (c.address || '') + ' ' + (c.note || '')).toLowerCase(); return words.every(w => h.includes(w)); }); if (hits.length) score = 30; else hits = null; }
+        if (!score) { hits = o.contacts.filter(c => { return words.every(w => c.h.includes(w)); }); if (hits.length) score = 30; else hits = null; }
       }
       if (score) out.push({ o, hits, score });
     }
-    return out.sort((a, b) => b.score - a.score || (b.o.known ? 1 : 0) - (a.o.known ? 1 : 0) || b.o.n - a.o.n);
+    return out.sort((a, b) => b.score - a.score || (a.o.sk < b.o.sk ? -1 : a.o.sk > b.o.sk ? 1 : 0));
   },
   /* best directory entry for a letter recipient (bank name / IFSC prefix) */
   match(name, ifsc) {
@@ -245,9 +248,9 @@ const NDL = { q: '', cat: '', shown: 200, sort: 'org', dir: 1 };
 function nodalRows() {
   const q = NDL.q.trim(); if (!q && !NDL.cat) return null;
   const res = NODAL.search(q, NDL.cat === 'ALL' ? '' : NDL.cat, '');
-  const rows = []; for (const { o, hits } of res) for (const c of (hits || o.contacts)) if (c.email || c.phone) rows.push({ o, c, score: q ? (hits ? 1 : 2) : 0 });
+  const rows = []; for (const { o, hits } of res) for (const c of (hits || o.contacts)) if (c.email || c.phone || c.portal) rows.push({ o, c, score: q ? (hits ? 1 : 2) : 0 });
   const k = NDL.sort, d = NDL.dir; const t = x => x.c.tier === 1 ? 0 : x.c.tier === 2 ? 1 : 2;
-  rows.sort((a, b) => (q && k === 'org' ? 0 : 0) || (k === 'email' ? d * String(a.c.email).localeCompare(String(b.c.email)) : k === 'phone' ? d * String(a.c.phone || '~').localeCompare(String(b.c.phone || '~')) : d * a.o.name.localeCompare(b.o.name, 'en', { sensitivity: 'base' })) || t(a) - t(b) || String(a.c.email).localeCompare(String(b.c.email)));
+  rows.sort((a, b) => (q && k === 'org' ? 0 : 0) || (k === 'email' ? d * String(a.c.email).localeCompare(String(b.c.email)) : k === 'phone' ? d * String(a.c.phone || '~').localeCompare(String(b.c.phone || '~')) : d * (a.o.sk < b.o.sk ? -1 : a.o.sk > b.o.sk ? 1 : 0)) || t(a) - t(b) || String(a.c.email).localeCompare(String(b.c.email)));
   if (q && k === 'org' && d === 1) { const rank = new Map(res.map((r, i) => [r.o, i])); rows.sort((a, b) => rank.get(a.o) - rank.get(b.o) || t(a) - t(b) || String(a.c.email).localeCompare(String(b.c.email))); }
   return rows;
 }
@@ -271,7 +274,7 @@ VIEWS.nodal = async el => {
       <div class="tbl-wrap nd-wrap"><table class="tbl nd-tbl"><thead><tr><th data-sort="org">Organization${arrow('org')}</th><th data-sort="email">Email ID${arrow('email')}</th><th data-sort="phone">Phone No.${arrow('phone')}</th><th></th></tr></thead><tbody>
       ${shown.map((r, i) => { const prev = shown[i - 1]; const same = prev && prev.o === r.o; return `<tr class="${same ? 'nd-same' : 'nd-first'}">
         <td>${same ? '' : `<b>${hl(r.o.name)}</b><div class="small dim">${esc((NCAT[r.o.cat] || NCAT.OTH)[0])}${r.o.ifsc ? ' · IFSC ' + esc(r.o.ifsc) : ''}</div>`}</td>
-        <td class="mono">${r.c.email ? `${hl(r.c.email)}${r.c.tier === 1 ? ' <span class="badge pink">Legal / LEA</span>' : ''} <a href="#" data-cp="${esc(r.c.email)}" title="Copy e-mail">⧉</a>` : '—'}</td>
+        <td class="mono">${!r.c.email && r.c.portal ? `<span class="small">Portal: ${esc(r.c.portal)}</span> <a href="#" data-cp="${esc(r.c.portal)}" title="Copy link">⧉</a>` : r.c.email ? `${hl(r.c.email)}${r.c.tier === 1 ? ' <span class="badge pink">Legal / LEA</span>' : ''} <a href="#" data-cp="${esc(r.c.email)}" title="Copy e-mail">⧉</a>` : '—'}</td>
         <td class="mono">${r.c.phone ? `${hl(r.c.phone)} <a href="#" data-cp="${esc(r.c.phone)}" title="Copy phone">⧉</a>` : '—'}</td>
         <td><a href="#" data-row="${i}" title="Copy organisation, e-mail and phone">⧉ Copy</a></td></tr>`; }).join('')}</tbody></table></div>
       ${rows.length > NDL.shown ? `<div style="text-align:center;margin:12px"><button id="ndMore">Show more</button></div>` : ''}`;
@@ -283,7 +286,7 @@ VIEWS.nodal = async el => {
   };
   const run = () => { NDL.q = $('#ndQ', el).value.trim(); NDL.shown = 200; NDL.sort = 'org'; NDL.dir = 1; $('#ndClr', el).hidden = !NDL.q; draw(); };
   $('#ndF', el).onsubmit = e => { e.preventDefault(); run(); };
-  let t; $('#ndQ', el).oninput = () => { clearTimeout(t); t = setTimeout(run, 250); };
+  let t; $('#ndQ', el).oninput = () => { clearTimeout(t); t = setTimeout(run, 120); };
   $('#ndClr', el).onclick = () => { $('#ndQ', el).value = ''; run(); $('#ndQ', el).focus(); };
   $$('[data-nc]', el).forEach(b => b.onclick = () => { NDL.cat = NDL.cat === b.dataset.nc ? '' : b.dataset.nc; NDL.shown = 200; NDL.sort = 'org'; NDL.dir = 1; $$('[data-nc]', el).forEach(x => x.classList.toggle('on', x.dataset.nc === NDL.cat)); draw(); });
   draw(); $('#ndQ', el).focus();
