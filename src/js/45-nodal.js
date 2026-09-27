@@ -195,9 +195,9 @@ const NODAL = {
     if (this.loaded) return; if (this._p) return this._p;
     this._p = (async () => {
       try { this.user = (await Vault.get('nodal:user')) || []; this.flags = (await Vault.get('nodal:flags')) || {}; } catch { }
-      let doc = null; try { doc = await Vault.get('nodal:list'); } catch { }
+      let doc = null;
       if (!doc) {
-        if (!keyB64 && !Backend.on()) throw new Error('The directory opens after signing in through the access server (or import the master Excel below).');
+        if (!keyB64 && !Backend.on()) throw new Error('The directory opens after signing in with Google through the access server.');
         const key = keyB64 || (await Backend.call('refKey')).key;
         const r = await fetch(CONFIG.REF_NODAL_URL, { cache: 'default', credentials: 'omit' }); if (!r.ok) throw new Error('Directory file not found on the site');
         const buf = new Uint8Array(await r.arrayBuffer()); if (new TextDecoder().decode(buf.slice(0, 7)) !== 'SSREF1\n') throw new Error('Not a SIXTH SENSE reference file');
@@ -241,74 +241,51 @@ const NODAL = {
   }
 };
 async function copyText(t, what) { try { await navigator.clipboard.writeText(t); } catch { const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch { } ta.remove(); } toast((what || 'Copied') + ' — copied to clipboard', 'ok', 1400); }
-const NDL = { q: '', cat: '', sub: '', open: new Set(), shown: 40, all: new Set() };
+const NDL = { q: '', cat: '', shown: 200, sort: 'org', dir: 1 };
+/* rows = one line per contact: organisation · e-mail · phone (legal / LEA first inside each organisation) */
+function nodalRows() {
+  const q = NDL.q.trim(); if (!q && !NDL.cat) return null;
+  const res = NODAL.search(q, NDL.cat === 'ALL' ? '' : NDL.cat, '');
+  const rows = []; for (const { o, hits } of res) for (const c of (hits || o.contacts)) if (c.email || c.phone) rows.push({ o, c, score: q ? (hits ? 1 : 2) : 0 });
+  const k = NDL.sort, d = NDL.dir; const t = x => x.c.tier === 1 ? 0 : x.c.tier === 2 ? 1 : 2;
+  rows.sort((a, b) => (q && k === 'org' ? 0 : 0) || (k === 'email' ? d * String(a.c.email).localeCompare(String(b.c.email)) : k === 'phone' ? d * String(a.c.phone || '~').localeCompare(String(b.c.phone || '~')) : d * a.o.name.localeCompare(b.o.name, 'en', { sensitivity: 'base' })) || t(a) - t(b) || String(a.c.email).localeCompare(String(b.c.email)));
+  if (q && k === 'org' && d === 1) { const rank = new Map(res.map((r, i) => [r.o, i])); rows.sort((a, b) => rank.get(a.o) - rank.get(b.o) || t(a) - t(b) || String(a.c.email).localeCompare(String(b.c.email))); }
+  return rows;
+}
 VIEWS.nodal = async el => {
-  el.innerHTML = pageHead('Nodal Officers', 'Directory of nodal / grievance officers of banks, payment companies, telecom operators, platforms and police cyber units.') + `<div class="empty" style="margin-top:40px"><div class="spin"></div>Opening the directory…</div>`;
+  el.innerHTML = pageHead('Nodal Officers', 'Nodal, legal and LEA contacts of banks, payment companies, telecom operators, platforms and police cyber units.') + `<div class="empty" style="margin-top:40px"><div class="spin"></div>Opening the directory…</div>`;
   try { await NODAL.load(); } catch (e) { }
-  const warn = `<div class="nd-warn">⚠ <b>Contact details may have changed.</b> This directory is compiled from nodal officer lists circulated to police units and from providers' websites. Always confirm with the concerned provider before relying on a contact. Emails may bounce and officers may have moved.</div>`;
-  if (!NODAL.loaded) {
-    el.innerHTML = pageHead('Nodal Officers', 'Directory of nodal / grievance officers.') + warn + `<div class="card" style="margin-top:12px">${emptyState(esc(NODAL.err || 'Directory not available.'))}<div class="row" style="justify-content:center"><button class="btn-p" id="ndImp">⇪ Import nodal officers master Excel</button></div><p class="small dim" style="text-align:center">The imported list is stored encrypted on this computer only.</p></div>`;
-    $('#ndImp', el).onclick = nodalImport; return;
-  }
+  const warn = `<div class="nd-warn">⚠ <b>Contact details may have changed.</b> Confirm with the concerned provider before relying on a contact. E-mails may bounce and officers may have moved.</div>`;
+  if (!NODAL.loaded) { el.innerHTML = pageHead('Nodal Officers', 'Nodal, legal and LEA contacts.') + warn + `<div class="card" style="margin-top:12px">${emptyState(esc(NODAL.err || 'Directory not available.') + '<br>Sign out and sign in again with Google. If it still fails, ask the admin to check that the site update (data/nodal-ref.enc) was uploaded.')}</div>`; return; }
   const cats = Object.keys(NCAT).filter(k => NODAL.orgs.some(o => o.cat === k));
-  const subs = NDL.cat === 'BANK' ? uniq(NODAL.orgs.filter(o => o.cat === 'BANK').map(o => o.sub)).sort() : [];
-  el.innerHTML = pageHead('Nodal Officers', `Nodal, legal and LEA contacts of banks, payment companies, telecom operators, platforms and police cyber units · list dated ${esc(NODAL.info.created || '—')}${NODAL.info.local ? ' (imported on this computer)' : ''}`, `<button id="ndAdd">＋ Add contact</button>${isAdmin() ? '<button id="ndImp">⇪ Update master list</button>' : ''}`) +
-    `<div class="nd-main"><span class="nd-mi">⌕</span><input id="ndQ" placeholder="Search any bank, wallet, telecom, platform, e-mail, phone, IFSC (FDRL) or UPI handle (@ybl)" value="${esc(NDL.q)}" autocomplete="off"><button class="btn-sm" id="ndClr" ${NDL.q ? '' : 'hidden'}>✕ Clear</button></div>
-    <div class="nd-cats"><button class="${!NDL.cat ? 'on' : ''}" data-nc="">All</button>${cats.map(k => `<button class="${NDL.cat === k ? 'on' : ''}" data-nc="${k}" style="--c:${NCAT[k][1]}">${NCAT[k][0]}</button>`).join('')}<button class="${NDL.cat === 'KERALA' ? 'on' : ''}" data-nc="KERALA" style="--c:#34d399">Kerala related</button></div>
-    ${subs.length ? `<div class="nd-subs">${['', ...subs].map(s => `<button class="chip ${NDL.sub === s ? 'on' : ''}" data-ns="${esc(s)}">${esc(s || 'All banks')}</button>`).join('')}</div>` : ''}
-    ${warn}<span id="ndN" hidden></span>
-    <div id="ndList"></div>`;
+  el.innerHTML = pageHead('Nodal Officers', 'Nodal, legal and LEA contacts of banks, payment companies, telecom operators, platforms and police cyber units.') +
+    `<form class="nd-main" id="ndF" autocomplete="off"><svg class="nd-si" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><input id="ndQ" placeholder="Search organisation, e-mail ID or phone number" value="${esc(NDL.q)}"><button type="button" class="btn-g" id="ndClr" ${NDL.q ? '' : 'hidden'} title="Clear">✕</button><button class="btn-p" type="submit">Search</button></form>
+    <div class="nd-cats"><button class="${NDL.cat === 'ALL' ? 'on' : ''}" data-nc="ALL">All</button>${cats.map(k => `<button class="${NDL.cat === k ? 'on' : ''}" data-nc="${k}" style="--c:${NCAT[k][1]}">${NCAT[k][0]}</button>`).join('')}</div>
+    ${warn}<div id="ndList"></div>`;
+  const hl = s => { s = esc(s); const w = NDL.q.replace(/"/g, '').trim().split(/\s+/).filter(x => x.length > 1).map(x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); return w.length ? s.replace(new RegExp('(' + w.join('|') + ')', 'ig'), '<mark>$1</mark>') : s; };
   const draw = () => {
-    const res = NODAL.search(NDL.q, NDL.cat, NDL.sub); 
-    const lim = res.slice(0, NDL.shown); const hl = s => { s = esc(s); if (!NDL.q || /^".*"$/.test(NDL.q) === false && NDL.q.length < 2) return s; const w = NDL.q.replace(/"/g, '').trim().split(/\s+/).filter(x => x.length > 1).map(x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); return w.length ? s.replace(new RegExp('(' + w.join('|') + ')', 'ig'), '<mark>$1</mark>') : s; };
-    $('#ndList', el).innerHTML = lim.length ? lim.map(({ o, hits }) => {
-      const open = NDL.open.has(o.id) || (hits && hits.length <= 6) || res.length === 1 || (NDL.q && res[0] && res[0].o === o && res[0].score >= 80); const list = hits && !NDL.all.has(o.id) ? hits : o.contacts; const emails = uniq(o.contacts.map(c => c.email).filter(Boolean)); const legal = uniq(o.contacts.filter(c => c.tier === 1 && c.email && !NODAL.flags[c.email]).map(c => c.email));
-      return `<div class="nd-org ${open ? 'open' : ''}" data-id="${esc(o.id)}" style="--c:${(NCAT[o.cat] || NCAT.OTH)[1]}">
-        <div class="nd-h" data-tog="${esc(o.id)}"><div><b>${hl(o.name)}</b> <span class="nd-cat">${esc((NCAT[o.cat] || NCAT.OTH)[0])}</span>${o.sub ? ` <span class="small dim">${esc(o.sub)}</span>` : ''}${o.ifsc ? ` <span class="mono small">IFSC ${esc(o.ifsc)}</span>` : ''}
-          ${o.aliases.length ? `<div class="small dim">${hl(o.aliases.join(' · '))}</div>` : ''}</div>
-          <div class="row" style="gap:6px">${hits ? `<span class="small" style="color:var(--amber)">match inside</span>` : ''}${emails.length ? `<button class="btn-sm" data-ce="${esc(o.id)}" title="Copy all e-mails, separated by ; for the To: field">⧉ All e-mails</button>` : ''}<span class="nd-car">${open ? '▾' : '▸'}</span></div></div>
-        ${legal.length ? `<div class="nd-legal"><span class="nd-lt">⚖ Legal / LEA</span>${legal.slice(0, 6).map(e => `<span class="mono">${hl(e)} <a href="#" data-cp="${esc(e)}" title="Copy">⧉</a></span>`).join('')}${legal.length > 1 ? `<a href="#" data-cl="${esc(o.id)}" class="small">⧉ Copy legal IDs</a>` : ''}</div>` : ''}
-        ${open ? `<div class="nd-body">${o.web ? `<div class="small" style="margin-bottom:6px">Website: <span class="mono">${esc(o.web)}</span></div>` : ''}<table class="tbl nd-t"><thead><tr><th>Officer / details</th><th>E-mail</th><th>Phone</th><th>Source</th><th></th></tr></thead><tbody>${list.slice(0, 300).map((c, i) => { const fl = c.email && NODAL.flags[c.email]; return `<tr class="${fl ? 'nd-flag' : ''}">
-          <td>${hl(c.who || (c.listed && c.listed.toLowerCase() !== o.name.toLowerCase() ? c.listed : '') || '—')}${c.tags.map(t => ` <span class="badge ${t === 'Legal / LEA' ? 'pink' : t === 'Official site' ? 'blue' : t === 'Added by you' ? 'green' : 'gray'}">${esc(t)}</span>`).join('')}${c.address ? `<div class="small dim">${esc(c.address)}</div>` : ''}${c.portal ? `<div class="small">Portal: <span class="mono">${esc(c.portal)}</span> <a href="#" data-cp="${esc(c.portal)}">⧉</a></div>` : ''}${c.note ? `<div class="small dim">${esc(c.note)}</div>` : ''}${fl ? `<div class="small" style="color:var(--amber)">⚠ Marked outdated by ${esc(fl.by || 'you')} on ${esc(fl.on)}</div>` : ''}</td>
-          <td class="mono">${c.email ? `${hl(c.email)} <a href="#" data-cp="${esc(c.email)}" title="Copy e-mail">⧉</a>` : '—'}</td>
-          <td class="mono">${c.phone ? `${hl(c.phone)} <a href="#" data-cp="${esc(c.phone)}" title="Copy phone">⧉</a>` : '—'}</td>
-          <td class="small dim">${esc(String(c.src || '').split(';')[0].slice(0, 60))}${c.year ? `<br>${c.year}` : ''}</td>
-          <td style="white-space:nowrap"><a href="#" data-cr="${esc(o.id)}|${o.contacts.indexOf(c)}" title="Copy this contact">⧉ Copy</a>${c.email && !c.mine ? ` · <a href="#" data-fl="${esc(c.email)}">${fl ? 'Unmark' : 'Outdated?'}</a>` : ''}${c.mine ? ` · <a href="#" data-del="${esc(c.uid)}">Delete</a>` : ''}</td></tr>`; }).join('')}</tbody></table>
-          ${hits && !NDL.all.has(o.id) && hits.length < o.n ? `<a href="#" data-all="${esc(o.id)}" class="small">Show all contacts</a>` : ''}${list.length > 300 ? `<div class="small dim">First 300 shown — refine the search.</div>` : ''}</div>` : ''}</div>`;
-    }).join('') + (res.length > NDL.shown ? `<div style="text-align:center;margin:12px"><button id="ndMore">Show more</button></div>` : '') : emptyState('No match. Try fewer words, the e-mail domain (e.g. @federalbank.co.in), the IFSC prefix or a phone number.');
-    $$('[data-tog]', el).forEach(h => h.onclick = e => { if (e.target.closest('button,a')) return; const id = h.dataset.tog; NDL.open.has(id) ? NDL.open.delete(id) : NDL.open.add(id); draw(); });
-    $$('[data-ce]', el).forEach(b => b.onclick = () => { const o = NODAL.byId.get(b.dataset.ce); copyText(uniq(o.contacts.filter(c => c.email && !NODAL.flags[c.email]).map(c => c.email)).join('; '), 'All e-mails of ' + o.name); });
-    $$('[data-cl]', el).forEach(a => a.onclick = e => { e.preventDefault(); const o = NODAL.byId.get(a.dataset.cl); copyText(uniq(o.contacts.filter(c => c.tier === 1 && c.email && !NODAL.flags[c.email]).map(c => c.email)).join('; '), 'Legal / LEA e-mails of ' + o.name); });
-    $$('[data-cp]', el).forEach(a => a.onclick = e => { e.preventDefault(); copyText(a.dataset.cp); });
-    $$('[data-cr]', el).forEach(a => a.onclick = e => { e.preventDefault(); const [id, i] = a.dataset.cr.split('|'); const o = NODAL.byId.get(id), c = o.contacts[+i]; copyText([o.name, c.who, c.email ? 'E-mail: ' + c.email : '', c.phone ? 'Phone: ' + c.phone : '', c.address || '', c.portal ? 'Portal: ' + c.portal : ''].filter(Boolean).join('\n'), 'Contact'); });
-    $$('[data-all]', el).forEach(a => a.onclick = e => { e.preventDefault(); NDL.all.add(a.dataset.all); draw(); });
-    $$('[data-fl]', el).forEach(a => a.onclick = async e => { e.preventDefault(); const k = a.dataset.fl; if (NODAL.flags[k]) delete NODAL.flags[k]; else NODAL.flags[k] = { on: fmtDate(Date.now() + 5.5 * 3600000), by: (S.user || {}).email || '' }; try { await Vault.put('nodal:flags', NODAL.flags); } catch { } draw(); });
-    $$('[data-del]', el).forEach(a => a.onclick = async e => { e.preventDefault(); if (!await confirmBox('Delete contact', 'Remove this contact you added?', 'Delete', true)) return; NODAL.user = NODAL.user.filter(u => u.uid !== a.dataset.del); await Vault.put('nodal:user', NODAL.user); NODAL.applyUser(); draw(); });
-    if ($('#ndMore', el)) $('#ndMore', el).onclick = () => { NDL.shown += 40; draw(); };
+    const rows = nodalRows(); const box = $('#ndList', el);
+    if (!rows) { box.innerHTML = `<div class="nd-idle">Type in the search bar, or choose a heading above.</div>`; return; }
+    if (!rows.length) { box.innerHTML = emptyState('No match. Try fewer words, the e-mail domain (e.g. @federalbank.co.in) or a phone number.'); return; }
+    const shown = rows.slice(0, NDL.shown); const arrow = k => NDL.sort === k ? (NDL.dir > 0 ? ' ▲' : ' ▼') : '';
+    box.innerHTML = `<div class="nd-bar"><span class="small dim">${NDL.cat && NDL.cat !== 'ALL' ? esc((NCAT[NDL.cat] || ['All'])[0]) : 'All'}${NDL.q ? ' · “' + esc(NDL.q) + '”' : ''}</span><button class="btn-sm" id="ndCopyAll">⧉ Copy e-mails shown</button></div>
+      <div class="tbl-wrap nd-wrap"><table class="tbl nd-tbl"><thead><tr><th data-sort="org">Organization${arrow('org')}</th><th data-sort="email">Email ID${arrow('email')}</th><th data-sort="phone">Phone No.${arrow('phone')}</th><th></th></tr></thead><tbody>
+      ${shown.map((r, i) => { const prev = shown[i - 1]; const same = prev && prev.o === r.o; return `<tr class="${same ? 'nd-same' : 'nd-first'}">
+        <td>${same ? '' : `<b>${hl(r.o.name)}</b><div class="small dim">${esc((NCAT[r.o.cat] || NCAT.OTH)[0])}${r.o.ifsc ? ' · IFSC ' + esc(r.o.ifsc) : ''}</div>`}</td>
+        <td class="mono">${r.c.email ? `${hl(r.c.email)}${r.c.tier === 1 ? ' <span class="badge pink">Legal / LEA</span>' : ''} <a href="#" data-cp="${esc(r.c.email)}" title="Copy e-mail">⧉</a>` : '—'}</td>
+        <td class="mono">${r.c.phone ? `${hl(r.c.phone)} <a href="#" data-cp="${esc(r.c.phone)}" title="Copy phone">⧉</a>` : '—'}</td>
+        <td><a href="#" data-row="${i}" title="Copy organisation, e-mail and phone">⧉ Copy</a></td></tr>`; }).join('')}</tbody></table></div>
+      ${rows.length > NDL.shown ? `<div style="text-align:center;margin:12px"><button id="ndMore">Show more</button></div>` : ''}`;
+    $$('[data-cp]', box).forEach(a => a.onclick = e => { e.preventDefault(); copyText(a.dataset.cp); });
+    $$('[data-row]', box).forEach(a => a.onclick = e => { e.preventDefault(); const r = shown[+a.dataset.row]; copyText([r.o.name, r.c.email, r.c.phone].filter(Boolean).join('\t'), 'Row'); });
+    $('#ndCopyAll', box).onclick = () => copyText(uniq(shown.map(r => r.c.email).filter(Boolean)).join('; '), 'E-mails');
+    $$('[data-sort]', box).forEach(th => th.onclick = () => { const k = th.dataset.sort; NDL.dir = NDL.sort === k ? -NDL.dir : 1; NDL.sort = k; draw(); });
+    if ($('#ndMore', box)) $('#ndMore', box).onclick = () => { NDL.shown += 200; draw(); };
   };
-  let t; $('#ndQ', el).oninput = e => { clearTimeout(t); t = setTimeout(() => { NDL.q = e.target.value; NDL.shown = 40; NDL.all.clear(); $('#ndClr', el).hidden = !NDL.q; draw(); }, 180); };
-  $('#ndClr', el).onclick = () => { NDL.q = ''; $('#ndQ', el).value = ''; $('#ndClr', el).hidden = true; draw(); $('#ndQ', el).focus(); };
-  $$('[data-nc]', el).forEach(b => b.onclick = () => { NDL.cat = b.dataset.nc; NDL.sub = ''; NDL.shown = 40; go('nodal'); });
-  $$('[data-ns]', el).forEach(b => b.onclick = () => { NDL.sub = b.dataset.ns; NDL.shown = 40; go('nodal'); });
-  $('#ndAdd', el).onclick = () => nodalAdd(() => go('nodal'));
-  if ($('#ndImp', el)) $('#ndImp', el).onclick = nodalImport;
+  const run = () => { NDL.q = $('#ndQ', el).value.trim(); NDL.shown = 200; NDL.sort = 'org'; NDL.dir = 1; $('#ndClr', el).hidden = !NDL.q; draw(); };
+  $('#ndF', el).onsubmit = e => { e.preventDefault(); run(); };
+  let t; $('#ndQ', el).oninput = () => { clearTimeout(t); t = setTimeout(run, 250); };
+  $('#ndClr', el).onclick = () => { $('#ndQ', el).value = ''; run(); $('#ndQ', el).focus(); };
+  $$('[data-nc]', el).forEach(b => b.onclick = () => { NDL.cat = NDL.cat === b.dataset.nc ? '' : b.dataset.nc; NDL.shown = 200; NDL.sort = 'org'; NDL.dir = 1; $$('[data-nc]', el).forEach(x => x.classList.toggle('on', x.dataset.nc === NDL.cat)); draw(); });
   draw(); $('#ndQ', el).focus();
 };
-function nodalAdd(done, pre = {}) {
-  const md = modal({ title: 'Add a nodal contact', size: 'md', body: `<datalist id="ndOrgs">${NODAL.orgs.slice(0, 3000).map(o => `<option value="${esc(o.name)}">`).join('')}</datalist><div class="grid g2">
-    <label class="f" style="grid-column:1/-1">Organisation *<input id="na_o" list="ndOrgs" value="${esc(pre.org || '')}" placeholder="Start typing — pick an existing name to add to it"></label>
-    <label class="f">Category<select id="na_c">${Object.entries(NCAT).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select></label>
-    <label class="f">Officer name / designation<input id="na_w"></label><label class="f">E-mail<input id="na_e"></label><label class="f">Phone<input id="na_p"></label>
-    <label class="f" style="grid-column:1/-1">Note (e.g. "confirmed by phone on …")<input id="na_n"></label></div><p class="small dim">Saved encrypted on this computer and included in your encrypted backups.</p>`, foot: `<button data-c>Cancel</button><button class="btn-p" id="na_s">Save</button>` });
-  $('[data-c]', md.el).onclick = () => md.close();
-  $('#na_s', md.el).onclick = async () => { const v = id => $('#' + id, md.el).value.trim(); if (!v('na_o') || !(v('na_e') || v('na_p'))) return toast('Organisation and an e-mail or phone are needed', 'warn'); if (v('na_e') && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v('na_e'))) return toast('Check the e-mail address', 'warn');
-    NODAL.user.push({ uid: 'U' + Date.now(), org: v('na_o'), cat: v('na_c'), who: v('na_w'), email: v('na_e').toLowerCase(), phone: v('na_p'), note: v('na_n'), on: fmtDate(Date.now() + 5.5 * 3600000), by: (S.user || {}).email || '' }); await Vault.put('nodal:user', NODAL.user); NODAL.applyUser(); md.close(); toast('Contact added', 'ok'); done && done(); };
-}
-function nodalImport() {
-  const i = document.createElement('input'); i.type = 'file'; i.accept = '.xlsx,.xls,.csv';
-  i.onchange = async () => { const f = i.files[0]; if (!f) return; try { await Libs.load(); const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' }); const ws = wb.Sheets['All Nodal Officers'] || wb.Sheets[wb.SheetNames[0]]; const g = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-    const h = g[0].map(x => String(x).toLowerCase()); const c = (...k) => h.findIndex(x => k.some(y => x.includes(y))); const cC = c('category'), cO = c('organi', 'contact', 'name'), cP = c('phone', 'mobile'), cE = c('email', 'mail'), cS = c('source');
-    if (cE < 0) throw new Error('No e-mail column found'); const rows = g.slice(1).map(r => [String(r[cC] ?? ''), String(r[cO] ?? '').replace(/\s+/g, ' ').trim(), String(r[cP] ?? '').trim(), String(r[cE] ?? '').trim().toLowerCase(), String(r[cS] ?? '')]).filter(r => r[3] || r[2]);
-    const doc = { v: 1, kind: 'nodal', created: new Date().toISOString().slice(0, 10), rows, official: [], local: true }; await Vault.put('nodal:list', doc); NODAL.reset(); await NODAL.load(); await audit('Imported nodal officers list', rows.length + ' rows'); toast(rows.length + ' contacts imported', 'ok'); go('nodal'); } catch (e) { toast(e.message, 'err'); } };
-  i.click();
-}

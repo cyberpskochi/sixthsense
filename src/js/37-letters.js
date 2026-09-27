@@ -352,7 +352,7 @@ VIEWS.letters = async el => {
     else { const em = uniq(o.contacts.filter(c => c.email && !NODAL.flags[c.email]).map(c => c.email)); const pick = uniq(o.contacts.filter(c => c.email && c.tier && !NODAL.flags[c.email]).map(c => c.email)).slice(0, 4);
       box.innerHTML = `<h3 style="margin:0 0 4px">Send to — nodal contacts</h3><div class="small"><b>${esc(o.name)}</b> — legal / LEA IDs first</div>${(pick.length ? pick : em.slice(0, 3)).map(e => `<div class="mono">${esc(e)} <a href="#" data-lcp="${esc(e)}">⧉</a></div>`).join('')}<div class="row" style="margin-top:6px;flex-wrap:wrap"><button class="btn-sm" id="lNodAll">⧉ Copy all e-mails</button><button class="btn-sm" id="lNodGo">Open in directory</button></div><div class="small dim" style="margin-top:4px">Confirm with the bank — contacts may have changed.</div>`;
       $$('[data-lcp]', box).forEach(a => a.onclick = e => { e.preventDefault(); copyText(a.dataset.lcp); }); $('#lNodAll', box).onclick = () => copyText(em.join('; '), 'All e-mails of ' + o.name); }
-    const g = $('#lNodGo', box); if (g) g.onclick = e => { e.preventDefault(); NDL.q = o ? o.name : LET.sel.replace(/\(.*?\)/g, '').trim(); NDL.cat = ''; NDL.sub = ''; if (o) NDL.open.add(o.id); go('nodal'); };
+    const g = $('#lNodGo', box); if (g) g.onclick = e => { e.preventDefault(); NDL.q = o ? o.name : LET.sel.replace(/\(.*?\)/g, '').trim(); NDL.cat = ''; go('nodal'); };
   })();
   $$('[data-lt]', el).forEach(b => b.onclick = () => { LET.type = b.dataset.lt; LET.sel = ''; LET.excl = new Set(); go('letters'); });
   $$('.letter-page', el).forEach(p => p.contentEditable = 'true');
