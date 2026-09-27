@@ -33,6 +33,7 @@ jobs:
           python3 build.py "${{ vars.GOOGLE_CLIENT_ID }}"
           mkdir -p _site
           cp dist/CFITS.html _site/index.html
+          mkdir -p _site/data; for f in atm-ref.enc nodal-ref.enc; do if [ -f data/$f ]; then cp data/$f _site/data/; fi; done
           printf 'User-agent: *\nDisallow: /\n' > _site/robots.txt
       - uses: actions/upload-pages-artifact@v3
         with:
