@@ -87,7 +87,7 @@ function pageHead(title, sub, actions = '') {
 }
 function kpi(label, value, sub = '', color = 'rgba(0,229,255,.3)') {
   const m = String(color).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/); const solid = m ? `rgb(${m[1]},${m[2]},${m[3]})` : color;
-  return `<div class="card kpi" style="--kc:${color.replace(/,\s*[\d.]+\)$/, ',.35)')};--kc2:${solid}"><div class="pulse"></div><div class="l">${esc(label)}</div><div class="v">${value}</div>${sub ? `<div class="s">${sub}</div>` : ''}</div>`;
+  return `<div class="card kpi" style="--kc:${color.replace(/,\s*[\d.]+\)$/, ',.35)')};--kc2:${solid}"><div class="pulse"></div><div class="l">${esc(label)}</div><div class="v">${esc(value)}</div>${sub !== '' && sub != null ? `<div class="s">${esc(sub)}</div>` : ''}</div>`; // label, value and caption are always escaped (data such as bank names can reach them)
 }
 function emptyState(msg, btn) { return `<div class="empty">${msg}${btn ? `<div style="margin-top:10px">${btn}</div>` : ''}</div>`; }
 

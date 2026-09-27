@@ -3,7 +3,7 @@ VIEWS.backup = async el => {
   const g = GAuth.configured() && S.user.google; const c = S.cur;
   el.innerHTML = pageHead('Google Drive Backup Center', `Backups are encrypted in this browser (AES-256-GCM, key from your vault passphrase) before upload. Drive stores only the .enc package in the folder “${esc(CONFIG.DRIVE_FOLDER)}” using the restricted <span class="mono">drive.file</span> scope — the app cannot see any other Drive files. Keys are never included in the backup.`) +
     (!g ? `<div class="notice">${GAuth.configured() ? 'You are in local mode. Sign out and sign in with Google to use Drive backup.' : 'Google sign-in is not configured for this deployment. Set GOOGLE_CLIENT_ID (see setup guide) to enable Drive backup. You can still export encrypted .enc packages from Reports.'}</div>` : '') +
-    `<div class="grid g4" style="margin:12px 0">${kpi('Drive connection', g ? (GAuth.valid() ? 'Connected' : 'Reconnect') : 'Off')}${kpi('Current case', c ? esc(c.meta.id) : '—')}${kpi('Last backup', c && c.meta.lastBackup ? c.meta.lastBackup : '—')}${kpi('Auto-backup', S.prefs.autoBackup ? 'Every ' + S.prefs.autoBackupMin + ' min' : 'Off')}</div>
+    `<div class="grid g4" style="margin:12px 0">${kpi('Drive connection', g ? (GAuth.valid() ? 'Connected' : 'Reconnect') : 'Off')}${kpi('Current case', c ? c.meta.id : '—')}${kpi('Last backup', c && c.meta.lastBackup ? c.meta.lastBackup : '—')}${kpi('Auto-backup', S.prefs.autoBackup ? 'Every ' + S.prefs.autoBackupMin + ' min' : 'Off')}</div>
     <div class="card" style="margin-bottom:12px"><div class="row">
       <button id="bkCon" ${g ? '' : 'disabled'}>☁ Connect Google Drive</button>
       <button class="btn-p" id="bkNow" ${g && c && !c.meta.demo ? '' : 'disabled'}>⇧ Backup current case</button>
