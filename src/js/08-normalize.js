@@ -138,7 +138,8 @@ function normCdr(grid, hdr, opts) {
   for (let r = start; r < rows.length; r++) {
     const row = rows[r]; const ref = grid.rowRef[r] || { row: r + 1 };
     let tgt = map.target !== undefined ? normPhone(cellText(get(row, 'target'))) : target;
-    let a = normPhone(cellText(get(row, 'aParty'))), b = normPhone(cellText(get(row, 'bParty')));
+    const hdrId = v => { v = String(cellText(v) || '').toUpperCase().replace(/\s/g, ''); return /[A-Z]/.test(v) && v.length >= 4 && v.length <= 20 ? v : ''; }; // bank / service SMS headers e.g. VM-SBIINB
+    let a = normPhone(cellText(get(row, 'aParty'))) || hdrId(get(row, 'aParty')), b = normPhone(cellText(get(row, 'bParty'))) || hdrId(get(row, 'bParty'));
     if (!a && !b) continue;
     let d = parseDateTime(get(row, 'date'), order);
     if (d && !d.hasTime) { const t = parseTimeStr(get(row, 'time')); if (t) { const x = new Date(d.ts); d = { ts: mkTs(x.getUTCFullYear(), x.getUTCMonth() + 1, x.getUTCDate(), t[0], t[1], t[2]), hasTime: true }; } }

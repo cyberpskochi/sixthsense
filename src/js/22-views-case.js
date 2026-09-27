@@ -38,7 +38,7 @@ function caseForm(existing) {
     if (!id) return toast('Case ID required', 'warn'); if (!existing && S.index.some(x => x.id === id)) return toast('Case ID already exists', 'warn');
     const meta = { id, crimeNo: v('f_crime'), ps: v('f_ps'), district: v('f_dist'), io: v('f_io'), type: v('f_type'), regDate: v('f_reg'), status: v('f_st'), conf: v('f_conf'), remarks: v('f_rem') };
     if (existing) { Object.assign(S.cur.meta, meta); markDirty('meta'); await audit('Edited case details', JSON.stringify(meta).slice(0, 300)); md.close(); renderShell(); go('dashboard'); }
-    else { await createCase(meta); md.close(); renderShell(); go('import'); toast('Case created. Import data next.', 'ok'); }
+    else { await createCase(meta); md.close(); renderShell(); go('upload'); toast('Case created. Upload the statements, NCRP report and CDRs.', 'ok'); }
   };
 }
 
@@ -75,7 +75,7 @@ VIEWS.dashboard = el => {
     </div>
     <div class="card" style="margin-top:12px"><h3>Transaction timeline (daily debit volume, all accounts)</h3><div class="chart-box"><canvas id="chTl"></canvas></div></div>`;
   $$('[data-go]', el).forEach(a => a.onclick = e => { e.preventDefault(); go(a.dataset.go); });
-  $('#dEdit', el).onclick = () => caseForm(true); $('#dImp', el).onclick = () => go('import'); $('#dRun', el).onclick = () => { S.derived = null; go('dashboard'); toast('Analysis refreshed', 'ok'); };
+  $('#dEdit', el).onclick = () => caseForm(true); $('#dImp', el).onclick = () => go('upload'); $('#dRun', el).onclick = () => { S.derived = null; go('dashboard'); toast('Analysis refreshed', 'ok'); };
   bindLeadButtons(el);
   mkChart($('#chLayer', el), { type: 'bar', data: { labels: layerCounts.map(([l]) => layerName(l)), datasets: [{ label: 'Traced in', data: layerCounts.map(([, b]) => round2(b.tin)), backgroundColor: SERIES[0], borderRadius: 4 }, { label: 'Possibly available', data: layerCounts.map(([, b]) => round2(b.retained)), backgroundColor: SERIES[2], borderRadius: 4 }, { label: 'Cash out', data: layerCounts.map(([, b]) => round2(b.cash)), backgroundColor: SERIES[1], borderRadius: 4 }] }, options: { scales: { y: { ticks: { callback: v => inrShort(v) } } }, plugins: { tooltip: { callbacks: { label: x => x.dataset.label + ': ' + inr(x.raw) } } } } });
   const top = Array.from(d.acctRes.entries()).sort((a, b) => b[1].tin - a[1].tin).slice(0, 8);

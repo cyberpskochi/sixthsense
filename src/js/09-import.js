@@ -87,8 +87,8 @@ async function commitQueued(q) {
         const no = grp.acctNo || q.opts.acctNo || G.meta.acctNo; if (!no) { rejects.push(...grp.txns.map(t => ({ row: t.src, reason: 'No account number', raw: t.raw }))); continue; }
         const bank = G.bank !== 'GENERIC' ? bankByCode(G.bank).name : (bankByIfsc(G.meta.ifsc) || {}).name || '';
         const role = q.opts.role !== 'AUTO' ? q.opts.role : '';
-        const a = ensureAcct(no, { bank, ifsc: G.meta.ifsc, holder: G.meta.holder, role });
-        if (role) a.role = role;
+        const a = ensureAcct(no, { bank, ifsc: G.meta.ifsc, holder: q.opts.holder || G.meta.holder, role });
+        if (role) a.role = role; if (q.opts.holder) a.holder = q.opts.holder; if (q.opts.upc) a.upc = q.opts.upc;
         a.sources.push(impId);
         const existing = IX.txByAcct.get(a.id) || []; const keys = new Set(existing.map(dupKey));
         const newList = [];
@@ -123,6 +123,10 @@ async function commitQueued(q) {
       let base = c.telecom.cdr.length; const seen = new Set(c.telecom.cdr.filter(x => x.target === G.res.target).map(x => x.target + x.other + x.ts + x.dir));
       for (const r of G.res.rows) { const k = r.target + r.other + r.ts + r.dir; if (seen.has(k)) { dups++; continue; } seen.add(k); r.i = base++; r.imp = impId; c.telecom.cdr.push(r); added++; }
       accts.push(G.res.target || '');
+      const tgt = G.res.target || normPhone(q.opts.target || '');
+      if (tgt && (q.opts.holder || q.opts.cdrRole)) { c.telecom.meta = c.telecom.meta || {}; c.telecom.meta[tgt] = { name: q.opts.holder || '', role: q.opts.cdrRole || '' };
+        if (!c.work.numbers.some(n => n.num === tgt)) c.work.numbers.push({ id: nextId('MOB'), num: tgt, role: q.opts.cdrRole || 'Unknown', source: 'CDR upload', person: q.opts.holder || '', remarks: '', added: nowStamp() }); }
+      if (tgt && q.opts.linkAcct) { const la = ensureAcct(q.opts.linkAcct, {}); if (!la.mobiles.includes(tgt) && !la.altMobiles.includes(tgt)) la.altMobiles.push(tgt); }
     } else if (q.kind === 'ipdr') {
       for (const r of G.res.rows) { r.id = nextId('IPDR'); r.imp = impId; c.ip.ipdr.push(r); added++; }
     } else if (q.kind === 'ncrp') {

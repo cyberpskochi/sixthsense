@@ -40,6 +40,8 @@ async function buildDemoCase() {
     for (let k = 0; k < ri(4, 12); k++) { const ts = T0 - ri(2, 40) * DAY + ri(0, 600) * MIN; const cr = rnd() < .5; const amt = ri(50, 2500); list.push({ ts, dr: cr ? 0 : amt, cr: cr ? amt : 0, ch: 'UPI', narr: `UPI/${cr ? 'CR' : 'DR'}/${utr12()}/${pick(FN)}/${pick(['SWIGGY', 'ZOMATO', 'RECHARGE', 'SHOP', 'SELF'])}`, utr: '' }); } }
   // micro validation credits into some L1
   for (const a of L1.slice(0, 14)) push(a, { ts: T0 - ri(1, 3) * DAY + ri(0, 500) * MIN, cr: 1, dr: 0, ch: 'IMPS', narr: `IMPS/P2A/${utr12()}/ACCOUNT VALIDATION/PENNYDROP`, utr: '' });
+  // dormant accounts: one old credit long before the fraud period
+  for (const a of [L1[5], L1[9], L2[3]]) push(a, { ts: T0 - ri(200, 260) * DAY, cr: ri(500, 3000), dr: 0, ch: 'UPI', narr: `UPI/CR/${utr12()}/${pick(FN)}/SALARY`, utr: '' });
   // SEEDS: 60 disputed debits from 2 complainant accounts to 50 L1
   const seedsIdx = []; let t = T0;
   for (let i = 0; i < 60; i++) {
@@ -107,6 +109,20 @@ async function buildDemoCase() {
   const ur = []; for (let k = 0; k < 25; k++) ur.push({ other: pick([callerNum, ...common, mob()]), dir: pick(['IN', 'OUT']), ts: T0 - ri(0, 5) * DAY + ri(0, 900) * MIN, imei: imeiShared, cell: '404-45-2201' });
   cdrOf(culpritNum, ur);
   for (const a of L1.slice(0, 6)) { const rr = []; for (let k = 0; k < 20; k++) rr.push({ other: pick([...common, mob(), mob(), a === L1[0] ? callerNum : mob()]), dir: pick(['IN', 'OUT']), ts: T0 - ri(0, 4) * DAY + ri(0, 900) * MIN, imei: '35' + a.acctNo.slice(-12).padStart(12, '1') }); cdrOf(a.mobiles[0], rr); }
+  // bank SMS + locations at money-movement times (for CDR location intelligence)
+  const SITES = [['404-45-2201', 'Karmatanr Main Road, Jamtara (DEMO)', 24.012, 86.729], ['404-45-3302', 'Station Road, Deoghar (DEMO)', 24.485, 86.695], ['404-45-1177', 'Esplanade, Kolkata (DEMO)', 22.565, 88.351], ['404-45-5120', 'Punhana, Nuh (DEMO)', 28.104, 77.002]];
+  const hdrOf = a => 'VM-' + ((bankByIfsc(a.ifsc) || {}).code || 'BANK').slice(0, 6) + 'BK';
+  const vs = []; for (const s0 of c.work.disputed.map(id => IX.txById.get(id)).filter(Boolean)) vs.push({ other: hdrOf(IX.acctById.get(s0.acctId)), dir: 'IN', kind: 'SMS', ts: s0.ts + ri(10, 50) * 1000, cell: '404-45-9001', addr: 'Kakkanad, Kochi (DEMO)', lat: 10.015, lon: 76.341 });
+  cdrOf(vict, vs);
+  L1.slice(0, 12).forEach((a, i) => { const site = SITES[i < 7 ? 0 : i % SITES.length]; const rr = [];
+    for (const t of (IX.txByAcct.get(a.id) || []).filter(t => (t.cr > 5000 || t.dr > 5000) && t.ts >= T0 - DAY)) {
+      const base = t.hasTime ? t.ts : t.ts + (10 + rr.length) * 3600000;
+      rr.push({ other: hdrOf(a), dir: 'IN', kind: 'SMS', ts: base + ri(5, 60) * 1000, cell: site[0], addr: site[1], lat: site[2], lon: site[3], imei: i < 4 ? imeiShared : '35' + a.acctNo.slice(-12).padStart(12, '1') });
+      rr.push({ other: pick(common), dir: 'OUT', ts: base + ri(2, 9) * MIN, cell: site[0], addr: site[1], lat: site[2], lon: site[3], imei: i < 4 ? imeiShared : '35' + a.acctNo.slice(-12).padStart(12, '1') });
+    }
+    if (rr.length) cdrOf(a.mobiles[0], rr); c.telecom.meta = c.telecom.meta || {}; c.telecom.meta[a.mobiles[0]] = { name: a.holder, role: 'Accused' };
+  });
+  c.telecom.meta = c.telecom.meta || {}; c.telecom.meta[vict] = { name: 'Complainant', role: 'Victim' };
   // OTP SMS to complainant around seeds
   for (const s of seedTx.filter(s => s.hasTime).slice(0, 25)) c.telecom.sms.push({ id: nextId('SMS'), msisdn: vict, ts: s.ts - ri(30, 110) * 1000, hasTime: true, sender: 'VM-SBIOTP', msg: `DEMO: OTP for transaction of Rs.${s.dr} is ${ri(100000, 999999)}. Do not share.`, otp: 'OTP', amount: s.dr, src: { file: 'DEMO_SMS.xlsx', row: 2 } });
   // a few tasks

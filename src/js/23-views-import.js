@@ -36,7 +36,7 @@ async function pumpQueue() {
   if (IMP.running) return; IMP.running = true;
   try { let q; while ((q = IMP.queue.find(x => x.status === 'queued'))) { await parseQueued(q); await tick(); } } finally { IMP.running = false; }
   const ready = IMP.queue.filter(q => q.status === 'ready').length, rev = IMP.queue.filter(q => q.status === 'review').length;
-  if (ready || rev) toast(`${ready} file(s) ready to import · ${rev} need review`, rev ? 'warn' : 'ok', 5000);
+  if ((ready || rev) && S.view !== 'upload') toast(`${ready} file(s) ready to import · ${rev} need review`, rev ? 'warn' : 'ok', 5000);
 }
 const QSTAT = { queued: ['Queued', 'gray'], parsing: ['Parsing…', 'cyan'], ready: ['Ready', 'green'], review: ['Needs review', 'amber'], imported: ['Imported', 'blue'], error: ['Error', 'red'], skipped: ['Skipped', 'gray'] };
 function renderQueue() {

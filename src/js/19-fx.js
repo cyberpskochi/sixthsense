@@ -14,6 +14,7 @@ const ICONS = {
   clock: '<circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.8 2.4"/>',
   chart: '<path d="M3 21h18"/><rect x="5" y="11" width="3" height="7"/><rect x="10.5" y="6" width="3" height="12"/><rect x="16" y="9" width="3" height="9"/><path d="M4 7l5-3 5 3 6-4"/>',
   flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
+  bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
   pin: '<path d="M12 21s-7-6.2-7-11.5a7 7 0 0114 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.6"/>',
   tree: '<rect x="9" y="2.5" width="6" height="4.5" rx="1"/><rect x="2.5" y="16.5" width="6" height="4.5" rx="1"/><rect x="15.5" y="16.5" width="6" height="4.5" rx="1"/><path d="M12 7v5M5.5 16.5V12h13v4.5"/>',
   letter: '<path d="M4 4h16v16H4z"/><path d="M8 8h8M8 11.5h8M8 15h5"/><path d="M15 17.5l1.5 1.5 3-3"/>',

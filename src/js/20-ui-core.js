@@ -2,8 +2,8 @@
 const SERIES = ['#2f9bff', '#ff6e40', '#00d98b', '#ffb300', '#ff2e88', '#008300', '#b388ff', '#ff4d5e']; // validated on dark surface #0f1b31
 const NAV = [
   ['Overview', [['dashboard', 'grid', 'Dashboard', '#00e5ff'], ['cases', 'folder', 'Cases', '#2979ff']]],
-  ['Data', [['import', 'upload', 'Import Data', '#00ff9d'], ['quality', 'shield', 'Data Quality', '#00e38c'], ['accounts', 'bank', 'Accounts', '#ffb300'], ['entities', 'users', 'Entities & Links', '#b388ff'], ['txns', 'list', 'Transactions', '#00e5ff']]],
-  ['Intelligence', [['ncrp', 'tree', 'NCRP Graph', '#ff2e88'], ['trail', 'flow', 'Money Trail', '#ff2e88'], ['network', 'nodes', 'Network Graph', '#b388ff'], ['geo', 'pin', 'IFSC & ATM Map', '#00e5ff'], ['telecom', 'phone', 'Telecom / CDR', '#00ff9d'], ['ip', 'globe', 'IP Intelligence', '#2979ff'], ['correlation', 'clock', 'Correlation', '#ffb300'], ['patterns', 'chart', 'Patterns / NDPS', '#ff6e40']]],
+  ['Data', [['upload', 'upload', 'Upload Center', '#00ff9d'], ['import', 'folder', 'Import Data (advanced)', '#00e38c'], ['quality', 'shield', 'Data Quality', '#00e38c'], ['accounts', 'bank', 'Accounts', '#ffb300'], ['entities', 'users', 'Entities & Links', '#b388ff'], ['txns', 'list', 'Transactions', '#00e5ff']]],
+  ['Intelligence', [['intel', 'bolt', 'Case Intelligence', '#ffb300'], ['ncrp', 'tree', 'NCRP Graph', '#ff2e88'], ['trail', 'flow', 'Money Trail', '#ff2e88'], ['network', 'nodes', 'Network Graph', '#b388ff'], ['geo', 'pin', 'IFSC & ATM Map', '#00e5ff'], ['telecom', 'phone', 'Telecom / CDR', '#00ff9d'], ['ip', 'globe', 'IP Intelligence', '#2979ff'], ['correlation', 'clock', 'Correlation', '#ffb300'], ['patterns', 'chart', 'Patterns / NDPS', '#ff6e40']]],
   ['Action', [['leads', 'flag', 'Leads', '#ff4d5e'], ['letters', 'letter', 'Letters / 94 BNSS', '#00ff9d'], ['requisitions', 'mail', 'Requisitions', '#ffb300'], ['tasks', 'check', 'Tasks', '#00ff9d'], ['reports', 'doc', 'Reports', '#00e5ff']]],
   ['System', [['backup', 'cloud', 'Drive Backup', '#2979ff'], ['users', 'ushield', 'Users & Access', '#ff2e88', 'admin'], ['settings', 'gear', 'Settings & Audit', '#8fb3c9']]]
 ];
@@ -60,6 +60,7 @@ function go(view, arg) {
   const FREE = ['cases', 'settings', 'backup', 'users'];
   if (!S.cur && !FREE.includes(view)) { toast(S.index.length ? 'Open a case first: click a case tile below.' : 'No case yet: click “＋ New case” or “▶ Load demo case” first.', 'warn', 4500); view = 'cases'; setTimeout(() => $$('#cNew,#cDemo,.tile').forEach(b => { b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 2400); }), 50); }
   if (view === 'users' && !isAdmin()) { toast('Only an admin can manage users.', 'err'); view = S.cur ? 'dashboard' : 'cases'; }
+  if (view === 'dashboard' && S.cur && !S.cur.meta.demo && !S.cur.txns.length && !S.cur.work.ncrp.length && !S.cur.telecom.cdr.length) view = 'upload';
   S.view = view; S.viewArg = arg; killCharts(); renderNav();
   const el = $('#content'); el.scrollTop = 0; el.innerHTML = '';
   try { (VIEWS[view] || VIEWS.dashboard)(el, arg); }
