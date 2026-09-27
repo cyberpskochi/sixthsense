@@ -97,7 +97,7 @@ async function signOut(reason) {
   try { Backend.log('SIGN OUT', reason || ''); } catch {}
   try { await saveNow(); } catch {}
   try { await Vault.forget(); } catch {}
-  Vault.lock(); GEO.reset(); S.cur = null; S.derived = null; S.index = []; killCharts(); $('#modalRoot').innerHTML = '';
+  Vault.lock(); GEO.reset(); NODAL.reset(); S.cur = null; S.derived = null; S.index = []; killCharts(); $('#modalRoot').innerHTML = '';
   $('#app').innerHTML = ''; $('#app').hidden = true;
   setTimeout(() => GAuth.signOut(), 400); S.user = null; ADM.users = []; ADM.pending = 0;
   showLogin(reason, /withdrawn|blocked/i.test(reason || '') ? 'err' : 'ok');

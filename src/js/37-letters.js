@@ -303,8 +303,9 @@ async function lettersDocx(docs, name) {
     const TW = 9638; const cellP = (t, o = {}) => new X.TableCell({ width: o.w ? { size: Math.round(TW * o.w / 100), type: X.WidthType.DXA } : undefined, children: [P(T(t, Object.assign({ size: 19 }, o.run || {})), { spacing: { after: 0 }, alignment: X.AlignmentType.CENTER })], verticalAlign: X.VerticalAlign.CENTER, shading: o.fill ? { fill: o.fill, type: X.ShadingType.CLEAR, color: 'auto' } : undefined, margins: { top: 60, bottom: 60, left: 80, right: 80 } });
     const BL = { style: X.BorderStyle.SINGLE, size: 8, color: '000000' };
     const table = new X.Table({ width: { size: TW, type: X.WidthType.DXA }, columnWidths: L.table.w.map(w => Math.round(TW * w / 100)), layout: X.TableLayoutType.FIXED, borders: { top: BL, bottom: BL, left: BL, right: BL, insideHorizontal: BL, insideVertical: BL }, rows: [new X.TableRow({ tableHeader: true, children: L.table.head.map((h, i) => cellP(h, { w: L.table.w[i], fill: hex(TBL_BLUE), run: { bold: true, color: 'FFFFFF' } })) })].concat(L.table.rows.map(r => new X.TableRow({ children: r.map((x, i) => cellP(String(x ?? ''), { w: L.table.w[i] })) }))) });
-    const footer = new X.Footer({ children: [new X.Table({ width: { size: 100, type: X.WidthType.PERCENTAGE }, borders: Object.assign({}, noB, { top: { style: X.BorderStyle.SINGLE, size: 18, color: red } }),
+    const mkFooter = () => new X.Footer({ children: [new X.Table({ width: { size: 100, type: X.WidthType.PERCENTAGE }, borders: Object.assign({}, noB, { top: { style: X.BorderStyle.SINGLE, size: 18, color: red } }),
       rows: [new X.TableRow({ children: [new X.TableCell({ borders: Object.assign({}, noB, { top: { style: X.BorderStyle.SINGLE, size: 18, color: red } }), shading: { fill: hex(BAND), type: X.ShadingType.CLEAR, color: 'auto' }, margins: { top: 90, bottom: 90 }, children: [P(T(lh.band, { bold: true, color: 'FFFFFF', size: 22 }), { alignment: X.AlignmentType.CENTER, spacing: { after: 0 } }), P(T([lh.tel ? 'Tel: ' + lh.tel : '', lh.email].filter(Boolean).join('   ·   '), { color: 'C8D0EB', size: 15 }), { alignment: X.AlignmentType.CENTER, spacing: { after: 0 } })] })] })] })] });
+    const footer = mkFooter();
     const kids = [P(T(L.title, { bold: true, size: 26 }), { alignment: X.AlignmentType.CENTER, spacing: { before: 160, after: 40 } }), P(T('(' + L.sec + ')', { bold: true, size: 24 }), { alignment: X.AlignmentType.CENTER, spacing: { after: 240 } }),
       P(T('To,', { bold: true }), { spacing: { after: 120 } })].concat(L.to.map((t, i) => P(T(t, { bold: i === L.to.length - 1 }), { indent: { left: 720 }, spacing: { after: 0 } })), [P(T(''), { spacing: { after: 60 } })]);
     for (const b of L.blocks) {
@@ -314,7 +315,7 @@ async function lettersDocx(docs, name) {
     }
     kids.push(P(T(''), { spacing: { before: 400 } }));
     lh.signL.concat(['Date: ' + L.date]).forEach(s => kids.push(P(T(s, { bold: true }), { indent: { left: 5600 }, alignment: X.AlignmentType.CENTER, spacing: { after: 0 } })));
-    sections.push({ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 500, bottom: 1300, left: 1134, right: 1134, header: 300, footer: 300 } } }, headers: { default: new X.Header({ children: headChildren }) }, footers: { default: footer }, children: kids });
+    sections.push({ properties: { titlePage: true, page: { size: { width: 11906, height: 16838 }, margin: { top: 900, bottom: 1300, left: 1134, right: 1134, header: 300, footer: 300 } } }, headers: { first: new X.Header({ children: headChildren }), default: new X.Header({ children: [P(T(''), { spacing: { after: 0 } })] }) }, footers: { first: footer, default: mkFooter() }, children: kids });
   }
   const blob = await X.Packer.toBlob(new X.Document({ creator: 'SIXTH SENSE', title: name, sections })); downloadBlob(blob, name + '.docx');
 }
@@ -336,6 +337,7 @@ VIEWS.letters = async el => {
       <div class="row" style="gap:6px"><button class="btn-sm" id="lPrev" ${idx <= 0 ? 'disabled' : ''}>◀</button><select id="lRec" style="flex:1;min-width:0">${recs.map(r => `<option value="${esc(r)}" ${LET.sel === r ? 'selected' : ''}>${done.has(r) ? '✓ ' : ''}${esc(r)} (${G.get(r).length})</option>`).join('')}</select><button class="btn-sm" id="lNext" ${idx < 0 || idx >= recs.length - 1 ? 'disabled' : ''}>▶</button></div>
       <div class="row" style="flex-wrap:wrap;margin-top:10px"><button class="btn-p" id="lDocx">⇩ Word (.docx)</button><button class="btn-p" id="lPdf">⇩ PDF</button><button class="btn-sm" id="lCopy">⧉ Copy</button></div>
       <div class="small dim" style="margin-top:6px">Downloads only this letter. After saving, press ▶ for the next bank. ${recs.length > 1 ? `<a href="#" id="lAll">All ${recs.length} letters in one file</a>` : ''}</div>
+      <div class="let-nodal" id="lNod"></div>
       <h3 style="margin-top:14px">Filters</h3>
       ${['tsp_cdr', 'isp_ipdr'].includes(LET.type) ? '' : `<label class="f">Layer<select id="lLay"><option value="0">All layers</option>${Array.from({ length: maxL }, (_, i) => `<option value="${i + 1}" ${LET.layer === i + 1 ? 'selected' : ''}>Layer ${i + 1}</option>`).join('')}</select></label>`}
       ${['bank_basic', 'freeze'].includes(LET.type) ? `<label class="f">Accounts from<select id="lSrc"><option value="all" ${LET.src !== 'ncrp' ? 'selected' : ''}>NCRP trail + bank statements</option><option value="ncrp" ${LET.src === 'ncrp' ? 'selected' : ''}>NCRP trail only</option></select></label>` : ''}
@@ -345,6 +347,13 @@ VIEWS.letters = async el => {
       <h3 style="margin-top:14px">Letterhead & wording</h3><div class="row" style="flex-wrap:wrap"><button class="btn-sm" id="lHead">🏢 Letterhead</button><button class="btn-sm" id="lCase">✎ FIR no., date & sections</button><button class="btn-sm" id="lEdit">✎ Edit wording</button><button class="btn-sm btn-d" id="lReset">↺ Reset</button></div>
       <p class="small dim" style="margin-top:10px">You can also type on the letter preview before copying. Word and PDF are made from the data and your saved wording.</p>
     </div></div>`;
+  (async () => { const box = $('#lNod', el); if (!box || !LET.sel) return; try { await NODAL.load(); } catch { box.innerHTML = '<div class="small dim">Nodal directory not available.</div>'; return; }
+    const r0 = (G.get(LET.sel) || [])[0] || {}; const o = NODAL.match(LET.sel, r0.ifsc || ''); if (!o) { box.innerHTML = `<div class="small dim">No nodal contact found for ${esc(LET.sel)}. <a href="#" id="lNodGo">Search the directory</a></div>`; }
+    else { const em = uniq(o.contacts.filter(c => c.email && !NODAL.flags[c.email]).map(c => c.email)); const pick = uniq(o.contacts.filter(c => c.email && c.tier && !NODAL.flags[c.email]).map(c => c.email)).slice(0, 4);
+      box.innerHTML = `<h3 style="margin:0 0 4px">Send to — nodal contacts</h3><div class="small"><b>${esc(o.name)}</b> — legal / LEA IDs first</div>${(pick.length ? pick : em.slice(0, 3)).map(e => `<div class="mono">${esc(e)} <a href="#" data-lcp="${esc(e)}">⧉</a></div>`).join('')}<div class="row" style="margin-top:6px;flex-wrap:wrap"><button class="btn-sm" id="lNodAll">⧉ Copy all e-mails</button><button class="btn-sm" id="lNodGo">Open in directory</button></div><div class="small dim" style="margin-top:4px">Confirm with the bank — contacts may have changed.</div>`;
+      $$('[data-lcp]', box).forEach(a => a.onclick = e => { e.preventDefault(); copyText(a.dataset.lcp); }); $('#lNodAll', box).onclick = () => copyText(em.join('; '), 'All e-mails of ' + o.name); }
+    const g = $('#lNodGo', box); if (g) g.onclick = e => { e.preventDefault(); NDL.q = o ? o.name : LET.sel.replace(/\(.*?\)/g, '').trim(); NDL.cat = ''; NDL.sub = ''; if (o) NDL.open.add(o.id); go('nodal'); };
+  })();
   $$('[data-lt]', el).forEach(b => b.onclick = () => { LET.type = b.dataset.lt; LET.sel = ''; LET.excl = new Set(); go('letters'); });
   $$('.letter-page', el).forEach(p => p.contentEditable = 'true');
   $('#lRec', el).onchange = e => { LET.sel = e.target.value; go('letters'); };
