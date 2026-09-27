@@ -28,4 +28,6 @@ doc = {'v': 1, 'kind': 'nodal', 'created': datetime.date.today().isoformat(), 'c
 raw = gzip.compress(json.dumps(doc, separators=(',', ':'), ensure_ascii=False).encode(), 9)
 iv = os.urandom(12); ct = AESGCM(key).encrypt(iv, raw, b'SIXTHSENSE-REF-NODAL-V1')
 out = pathlib.Path(__file__).resolve().parent.parent / 'data' / 'nodal-ref.enc'; out.write_bytes(b'SSREF1\n' + iv + ct)
+js = pathlib.Path(__file__).resolve().parent.parent / 'src' / 'js' / '46-nodal-data.js'
+js.write_text('/* Encrypted nodal officers directory (AES-256-GCM). Opens only with the key the access server gives approved officers. */\nconst NODAL_REF_B64 = "' + base64.b64encode(out.read_bytes()).decode() + '";\n')
 print(f'{len(rows)} rows + {len(official)} official entries -> {out} ({out.stat().st_size/1e3:.0f} KB)')
