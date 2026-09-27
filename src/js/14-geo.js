@@ -27,12 +27,13 @@ const IFSC_PREFIX = {
 };
 const IFSC_RX = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 const GEO = {
-  ifsc: new Map(), atm: new Map(), term: new Map(), loaded: false, _t: null, online: false,
+  ifsc: new Map(), atm: new Map(), term: new Map(), ps: [], loaded: false, _t: null, online: false,
   ATM_COLS: ['atmId', 'term', 'cbs', 'bank', 'address', 'city', 'district', 'state', 'pincode', 'lat', 'lon'],
   _idx(r) { for (const k of [r.term, r.cbs]) if (k && k !== r.atmId) { if (this.term.has(k) && this.term.get(k) !== r.atmId) this.term.set(k, null); else this.term.set(k, r.atmId); } },
   async ready() {
     if (this.loaded || !Vault.key) return;
     try { const a = await Vault.get('geo:ifsc'); if (a) for (const r of a) this.ifsc.set(r.ifsc, r); } catch {}
+    try { const p = await Vault.get('geo:ps'); if (p) this.ps = p; } catch {}
     try { const b = await Vault.get('geo:atm'); if (b) { const rows = Array.isArray(b) ? b : (b.rows || []); for (const x of rows) { const r = Array.isArray(x) ? Object.fromEntries(this.ATM_COLS.map((k, i) => [k, x[i] ?? ''])) : x; if (r.lat === '') r.lat = null; if (r.lon === '') r.lon = null; this.atm.set(r.atmId, r); this._idx(r); } } } catch (e) { console.warn(e); }
     this.loaded = true;
     if (!this.atm.size && Backend.on()) { try { await this.loadRef(); } catch (e) { this.refErr = e.message; console.warn('ATM reference', e); } }
@@ -55,8 +56,11 @@ const GEO = {
     return this._refP;
   },
   save() { clearTimeout(this._t); this._t = setTimeout(async () => { try { await Vault.put('geo:ifsc', Array.from(this.ifsc.values())); await Vault.put('geo:atm', { v: 2, rows: Array.from(this.atm.values()).filter(r => !r.ref).map(r => this.ATM_COLS.map(k => r[k] ?? '')) }); } catch (e) { console.warn(e); } }, 400); },
-  reset() { this.ifsc = new Map(); this.atm = new Map(); this.term = new Map(); this.loaded = false; this._refP = null; this.refInfo = null; },
+  reset() { this.ps = []; this.ifsc = new Map(); this.atm = new Map(); this.term = new Map(); this.loaded = false; this._refP = null; this.refInfo = null; },
   async addIfsc(rows) { await this.ready(); let added = 0, updated = 0; for (const r of rows) { if (this.ifsc.has(r.ifsc)) updated++; else added++; this.ifsc.set(r.ifsc, Object.assign({}, this.ifsc.get(r.ifsc) || {}, r)); } this.save(); return { added, updated }; },
+  async addPs(rows) { await this.ready(); const k = r => (r.name + '|' + r.district + '|' + r.state).toUpperCase(); const m = new Map(this.ps.map(r => [k(r), r])); let added = 0, updated = 0; for (const r of rows) { if (m.has(k(r))) updated++; else added++; m.set(k(r), r); } this.ps = Array.from(m.values()); try { await Vault.put('geo:ps', this.ps); } catch (e) { console.warn(e); } return { added, updated }; },
+  nearestPs(lat, lon, n = 2) { if (lat == null || lon == null || !this.ps.length) return []; const R = 6371, rad = x => x * Math.PI / 180; return this.ps.filter(p => p.lat != null).map(p => { const dLa = rad(p.lat - lat), dLo = rad(p.lon - lon); const a = Math.sin(dLa / 2) ** 2 + Math.cos(rad(lat)) * Math.cos(rad(p.lat)) * Math.sin(dLo / 2) ** 2; return Object.assign({ km: Math.round(2 * R * Math.asin(Math.sqrt(a)) * 10) / 10 }, p); }).sort((a, b) => a.km - b.km).slice(0, n); },
+  psByText(text, n = 2) { const t = String(text || '').toUpperCase(); if (!t || !this.ps.length) return []; return this.ps.filter(p => (p.district && t.includes(p.district.toUpperCase())) || (p.name && t.includes(p.name.toUpperCase().replace(/ (PS|POLICE STATION)$/, '')))).slice(0, n); },
   async addAtms(rows) { await this.ready(); let added = 0, updated = 0; for (const r of rows) { if (this.atm.has(r.atmId)) updated++; else added++; this.atm.set(r.atmId, r); this._idx(r); } this.save(); return { added, updated }; },
   info(code) {
     code = String(code || '').toUpperCase().replace(/\s/g, ''); if (!code) return null;

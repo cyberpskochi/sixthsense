@@ -1,6 +1,6 @@
 /* ------------------------------ CASE INTELLIGENCE (results page) ------------------------------ */
 const IV = { tab: 'summary', acct: '', type: '' };
-const IV_TABS = [['summary', 'Key findings'], ['direct', 'Complainant → Layer 1'], ['upi', 'UPI · persons · POS'], ['dormant', 'Dormant accounts'], ['peak', 'Peak dates'], ['test', 'Test (₹1) transactions'], ['fusion', 'CDR location intelligence'], ['loc', 'Location hotspots']];
+const IV_TABS = [['summary', 'Key findings'], ['peak', 'Peak dates'], ['loc', 'Location hotspots'], ['direct', 'Complainant → Layer 1 (per account)'], ['fusion', 'CDR location detail']];
 function xlsxBook(name, sheets) {
   const wb = XLSX.utils.book_new(); const used = new Set();
   for (const sh of sheets) { let n = String(sh.name).replace(/[\\\/?*\[\]:]/g, ' ').slice(0, 31) || 'Sheet'; let k = 1; while (used.has(n)) n = n.slice(0, 28) + '~' + (k++); used.add(n);
@@ -12,7 +12,7 @@ const DIRECT_COLS = [{ label: 'Date & time', get: r => fmtDT(r.tx.ts, r.tx.hasTi
   { label: 'UTR on both sides', html: r => r.utrMatch ? badge('✓ Same UTR', 'green') : r.cr ? badge('Other match', 'amber') : badge('—', 'gray'), x: r => r.utrMatch ? 'YES' : 'NO' }, { label: 'Match', get: r => r.strength }, { label: 'Channel', get: r => r.tx.channel }];
 const DSUM_COLS = [{ label: 'Layer 1 account', get: s => s.label }, { label: 'Bank', get: s => s.bank || '' }, { label: 'Transactions', k: 'n', num: 1 }, { label: 'Amount received', html: s => inr(s.amt), num: 1, x: s => s.amt }, { label: 'Same UTR', k: 'utrOk', num: 1 }, { label: 'First', get: s => fmtDT(s.first) }, { label: 'Last', get: s => fmtDT(s.last) }, { label: 'From complainant a/c', get: s => s.from.join(', ') }];
 function ivHead(el, extra = '') {
-  el.innerHTML = pageHead('Case Intelligence', 'Results from all uploaded statements, NCRP and CDRs in one place. Every finding is a lead for verification against the source records.', `<button id="ivRe">↻ Re-run</button><button id="ivRep" class="btn-p">⎙ Intelligence report (PDF)</button><button id="ivXl">⇩ All results (Excel)</button>`) +
+  el.innerHTML = pageHead('Key Findings', 'The most important results from all uploaded statements, NCRP and CDRs in one place. Every finding is a lead for verification against the source records.', `<button id="ivRe">↻ Re-run</button><button id="ivRep" class="btn-p">⎙ Intelligence report (PDF)</button><button id="ivXl">⇩ All results (Excel)</button>`) +
     `<div class="tabs" id="ivTabs">${IV_TABS.map(([k, t]) => `<button class="${IV.tab === k ? 'on' : ''}" data-t="${k}">${t}</button>`).join('')}</div>${extra}<div id="ivB"></div>`;
   $$('#ivTabs button', el).forEach(b => b.onclick = () => { IV.tab = b.dataset.t; go('intel'); });
   $('#ivRe', el).onclick = () => { S.derived = null; go('intel'); toast('Analysis re-run', 'ok'); };
@@ -46,7 +46,7 @@ function ivSummary(B) {
       ${ivCard('CDR location intelligence', F.hasCdr ? `<div class="iv-big">${nfmt(F.located)} of ${nfmt(F.rows.length)} money events located</div><div class="small muted">${F.commonCells.length} common locations · ${F.commonImei.length} common handsets · ${F.sharedCells.length} cells shared by different CDR holders</div>` : '<div class="dim">No CDR uploaded yet.</div>', '#2979ff', 'fusion')}
       ${ivCard('Location hotspots', LO.length ? LO.slice(0, 4).map(x => `<div class="small"><b>${esc(x.label)}</b> — ${x.accts.length} a/c · ${esc(x.src.join(', '))}</div>`).join('') : '<div class="dim">No shared locations yet.</div>', '#00e5ff', 'loc')}
     </div>`;
-  $$('[data-go]', B).forEach(c => c.onclick = () => { IV.tab = c.dataset.go; go('intel'); });
+  $$('[data-go]', B).forEach(c => c.onclick = () => { const g = { direct: 'verify', upi: 'entities', dormant: 'dormant', test: 'dormant', fusion: 'cdrday' }[c.dataset.go]; if (g) go(g); else { IV.tab = c.dataset.go; go('intel'); } });
 }
 function ivDirect(B) {
   const R = anDirect(); const accts = R.sum;

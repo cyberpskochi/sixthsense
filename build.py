@@ -30,6 +30,7 @@ def build(client_id='__GOOGLE_CLIENT_ID__', out='dist/CFITS.html'):
         'scripts': [{'g': g, 'src': CDN + p, 'sri': sri(f)} for g, p, f in LIBS],
         'pdfWorker': {'src': CDN + PDF_WORKER[0], 'sri': sri(PDF_WORKER[1])},
         'tesseract': {'src': CDN + TESS[0], 'sri': sri(TESS[1])},
+        'docx': {'g': 'docx', 'src': CDN + 'docx@8.5.0/build/index.umd.js', 'sri': sri(V / 'docx-8.5.0/package/build/index.umd.js')},
         'tessWorker': CDN + 'tesseract.js@5.1.1/dist/worker.min.js',
         'tessCore': CDN + 'tesseract.js-core@5.1.1',
         'tessLang': CDN + '@tesseract.js-data/eng@1.0.0/4.0.0_best_int',
@@ -51,7 +52,7 @@ def build(client_id='__GOOGLE_CLIENT_ID__', out='dist/CFITS.html'):
            f"script-src 'sha256-{h}' https://cdn.jsdelivr.net https://accounts.google.com/gsi/client 'wasm-unsafe-eval'; "
            "style-src 'unsafe-inline' https://accounts.google.com/gsi/style https://fonts.googleapis.com; "
            "img-src data: blob: https://*.googleusercontent.com https://*.gstatic.com https://tile.openstreetmap.org; "
-           "connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net https://script.google.com https://script.googleusercontent.com https://api.ipify.org https://ifsc.razorpay.com blob: data:; "
+           "connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net https://script.google.com https://script.googleusercontent.com https://api.ipify.org https://ifsc.razorpay.com https://ipwho.is https://rdap.apnic.net blob: data:; "
            "frame-src https://accounts.google.com; worker-src blob:; font-src data: https://fonts.gstatic.com; "
            "form-action 'none'; base-uri 'none'; object-src 'none'")
     html = (SRC / 'shell.html').read_text()

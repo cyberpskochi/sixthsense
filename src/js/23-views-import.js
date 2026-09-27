@@ -21,7 +21,7 @@ VIEWS.import = el => {
   else h = `<div class="small muted">${IMPORT_KINDS.find(k => k.k === IMP.kind).d}</div>`;
   opt.innerHTML = h;
   $$('select,input', opt).forEach(i => i.onchange = () => { o.bank = ($('#oBank', opt) || {}).value || o.bank; o.role = ($('#oRole', opt) || {}).value || o.role; o.dup = ($('#oDup', opt) || {}).value || o.dup; o.tz = ($('#oTz', opt) || {}).value || o.tz; if ($('#oAcct', opt)) o.acctNo = $('#oAcct', opt).value.trim(); if ($('#oTarget', opt)) o.target = $('#oTarget', opt).value.trim(); });
-  const addFiles = files => { for (const f of files) { if (!/\.(xlsx|xls|xlsm|csv|txt|tsv|pdf|ods)$/i.test(f.name)) continue; IMP.queue.push({ id: rid(6), file: f, kind: IMP.kind, opts: Object.assign({}, o), status: 'queued' }); } renderQueue(); pumpQueue(); };
+  const addFiles = files => { for (const f of files) { if (!/\.(xlsx|xls|xlsm|xlsb|csv|txt|tsv|pdf|ods|html?|mht|mhtml|rpt|prn|lst|dat|xml)$/i.test(f.name)) continue; IMP.queue.push({ id: rid(6), file: f, kind: IMP.kind, opts: Object.assign({}, o), status: 'queued' }); } renderQueue(); pumpQueue(); };
   const drop = $('#drop', el);
   const pick = dir => { const i = document.createElement('input'); i.type = 'file'; i.multiple = true; if (dir) i.webkitdirectory = true; i.onchange = () => addFiles(Array.from(i.files)); i.click(); };
   $('#pickFiles', el).onclick = e => { e.stopPropagation(); pick(false); }; $('#pickDir', el).onclick = e => { e.stopPropagation(); pick(true); };

@@ -8,6 +8,7 @@ const IMPORT_KINDS = [
   { k: 'ncrp', t: 'NCRP money trail', d: 'NCRP layer-wise transaction / put-on-hold report. Sets layers and marks disputed transactions by UTR.' },
   { k: 'sms', t: 'SMS / OTP', d: 'Lawfully obtained SMS / OTP records.' },
   { k: 'atm', t: 'ATM database', d: 'Master list of ATM IDs with address / district / state / latitude-longitude. Stored once (encrypted) and used for every case.' },
+  { k: 'psdb', t: 'Police stations list', d: 'All-India police stations with district, state, phone and latitude / longitude. Used to show the nearest police station to suspicious locations.' },
   { k: 'ifscdb', t: 'IFSC master list', d: 'RBI / bank IFSC branch list (Excel/CSV). Gives branch, district and state offline for every case.' }
 ];
 const IMP = { queue: [], kind: 'statement', opts: { bank: 'AUTO', role: 'AUTO', dup: 'merge', tz: 'IST', target: '', acctNo: '' }, running: false };
@@ -64,6 +65,7 @@ function runNormalise(q) {
     else if (q.kind === 'sms') res = { rows: normSms(G.g, G.hdr, opts), rejects: [] };
     else if (q.kind === 'atm') res = { rows: normAtm(G.g, G.hdr, opts), rejects: [] };
     else if (q.kind === 'ifscdb') res = { rows: normIfscDb(G.g, G.hdr, opts), rejects: [] };
+    else if (q.kind === 'psdb') res = { rows: normPsDb(G.g, G.hdr, opts), rejects: [] };
     G.res = res; q.result.push(G);
     if (q.kind !== 'statement' && res.rows && !res.rows.length) { q.needsReview = true; q.reasons.push('No rows parsed from ' + G.g.sheet); }
   }
@@ -124,9 +126,9 @@ async function commitQueued(q) {
       for (const r of G.res.rows) { const k = r.target + r.other + r.ts + r.dir; if (seen.has(k)) { dups++; continue; } seen.add(k); r.i = base++; r.imp = impId; c.telecom.cdr.push(r); added++; }
       accts.push(G.res.target || '');
       const tgt = G.res.target || normPhone(q.opts.target || '');
-      if (tgt && (q.opts.holder || q.opts.cdrRole)) { c.telecom.meta = c.telecom.meta || {}; c.telecom.meta[tgt] = { name: q.opts.holder || '', role: q.opts.cdrRole || '' };
-        if (!c.work.numbers.some(n => n.num === tgt)) c.work.numbers.push({ id: nextId('MOB'), num: tgt, role: q.opts.cdrRole || 'Unknown', source: 'CDR upload', person: q.opts.holder || '', remarks: '', added: nowStamp() }); }
-      if (tgt && q.opts.linkAcct) { const la = ensureAcct(q.opts.linkAcct, {}); if (!la.mobiles.includes(tgt) && !la.altMobiles.includes(tgt)) la.altMobiles.push(tgt); }
+      if (tgt && (q.opts.holder || q.opts.cdrRole || q.opts.linkAcct)) { c.telecom.meta = c.telecom.meta || {}; c.telecom.meta[tgt] = Object.assign(c.telecom.meta[tgt] || {}, { name: q.opts.holder || (c.telecom.meta[tgt] || {}).name || '', role: q.opts.cdrRole || '', type: q.opts.cdrType || '', acct: q.opts.linkAcct || '', imei: q.opts.imei || '' });
+        if (!c.work.numbers.some(n => n.num === tgt)) c.work.numbers.push({ id: nextId('MOB'), num: tgt, role: q.opts.cdrRole || 'Unknown', source: 'CDR upload' + (q.opts.cdrType ? ' (' + q.opts.cdrType + ')' : ''), person: q.opts.holder || '', remarks: q.opts.imei ? 'IMEI trace ' + q.opts.imei : '', added: nowStamp() }); }
+      if (tgt && q.opts.linkAcct) { const la = ensureAcct(q.opts.linkAcct, {}); if (!la.mobiles.includes(tgt) && !la.altMobiles.includes(tgt)) (q.opts.cdrType === 'linked' ? la.mobiles : la.altMobiles).push(tgt); }
     } else if (q.kind === 'ipdr') {
       for (const r of G.res.rows) { r.id = nextId('IPDR'); r.imp = impId; c.ip.ipdr.push(r); added++; }
     } else if (q.kind === 'ncrp') {
@@ -138,6 +140,7 @@ async function commitQueued(q) {
       }
     } else if (q.kind === 'sms') { for (const r of G.res.rows) { r.id = nextId('SMS'); r.imp = impId; c.telecom.sms.push(r); added++; } }
     else if (q.kind === 'atm') { const n = await GEO.addAtms(G.res.rows); added += n.added; dups += n.updated; }
+    else if (q.kind === 'psdb') { const n = await GEO.addPs(G.res.rows); added += n.added; dups += n.updated; }
     else if (q.kind === 'ifscdb') { const n = await GEO.addIfsc(G.res.rows); added += n.added; dups += n.updated; }
     if (G.saveTpl && G.sig) {
       S.templates = S.templates.filter(t => !(t.kind === q.kind && t.sig === G.sig));

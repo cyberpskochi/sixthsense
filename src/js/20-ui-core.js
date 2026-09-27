@@ -1,13 +1,16 @@
 /* =============================== UI CORE =============================== */
 const SERIES = ['#2f9bff', '#ff6e40', '#00d98b', '#ffb300', '#ff2e88', '#008300', '#b388ff', '#ff4d5e']; // validated on dark surface #0f1b31
+/* Three working groups (drop-down) + system links at the bottom. '-' = divider inside a group. */
 const NAV = [
-  ['Overview', [['dashboard', 'grid', 'Dashboard', '#00e5ff'], ['cases', 'folder', 'Cases', '#2979ff']]],
-  ['Data', [['upload', 'upload', 'Upload Center', '#00ff9d'], ['import', 'folder', 'Import Data (advanced)', '#00e38c'], ['quality', 'shield', 'Data Quality', '#00e38c'], ['accounts', 'bank', 'Accounts', '#ffb300'], ['entities', 'users', 'Entities & Links', '#b388ff'], ['txns', 'list', 'Transactions', '#00e5ff']]],
-  ['Intelligence', [['intel', 'bolt', 'Case Intelligence', '#ffb300'], ['ncrp', 'tree', 'NCRP Graph', '#ff2e88'], ['trail', 'flow', 'Money Trail', '#ff2e88'], ['network', 'nodes', 'Network Graph', '#b388ff'], ['geo', 'pin', 'IFSC & ATM Map', '#00e5ff'], ['telecom', 'phone', 'Telecom / CDR', '#00ff9d'], ['ip', 'globe', 'IP Intelligence', '#2979ff'], ['correlation', 'clock', 'Correlation', '#ffb300'], ['patterns', 'chart', 'Patterns / NDPS', '#ff6e40']]],
-  ['Action', [['leads', 'flag', 'Leads', '#ff4d5e'], ['letters', 'letter', 'Letters / 94 BNSS', '#00ff9d'], ['requisitions', 'mail', 'Requisitions', '#ffb300'], ['tasks', 'check', 'Tasks', '#00ff9d'], ['reports', 'doc', 'Reports', '#00e5ff']]],
-  ['System', [['backup', 'cloud', 'Drive Backup', '#2979ff'], ['users', 'ushield', 'Users & Access', '#ff2e88', 'admin'], ['settings', 'gear', 'Settings & Audit', '#8fb3c9']]]
+  ['UPLOAD', 'upload', '#00ff9d', [['up_ncrp', 'tree', 'NCRP Trail'], ['up_bank', 'bank', 'Bank Accounts'], ['up_cdr', 'phone', 'CDR'], ['up_ip', 'globe', 'Bank Login IP & IP Lookup'], '-', ['import', 'folder', 'Other data (KYC · IPDR · SMS)'], ['quality', 'shield', 'Data Quality']]],
+  ['ANALYSIS', 'bolt', '#ffb300', [['dashboard', 'grid', 'Dashboard'], ['verify', 'check', 'Money Trail Verification'], ['ncrp', 'tree', 'NCRP Graph'], ['cdrday', 'pin', 'CDR & Location Analysis'], ['dormant', 'clock', 'Dormant & Freeze Checks'], ['entities', 'users', 'Entities · UPI · POS'], ['leads', 'flag', 'Leads'], ['intel', 'bolt', 'Key Findings'], '-',
+    ['geo', 'pin', 'IFSC & ATM Map'], ['network', 'nodes', 'Network Graph'], ['trail', 'flow', 'Statement Trail'], ['accounts', 'bank', 'Accounts'], ['txns', 'list', 'Transactions'], ['telecom', 'phone', 'Telecom (advanced)'], ['ip', 'globe', 'IP Intelligence'], ['correlation', 'clock', 'Correlation'], ['patterns', 'chart', 'Patterns / NDPS']]],
+  ['REPORTS', 'doc', '#00e5ff', [['letters', 'letter', '94 BNSS Letters'], ['reports', 'doc', 'Reports & Export'], ['requisitions', 'mail', 'Requisitions'], ['tasks', 'check', 'Tasks']]]
 ];
-const NAV_BY = Object.fromEntries(NAV.flatMap(g => g[1]).map(x => [x[0], x]));
+const NAV_SYS = [['cases', 'folder', 'Cases', '#2979ff'], ['backup', 'cloud', 'Drive Backup', '#2979ff'], ['users', 'ushield', 'Users & Access', '#ff2e88', 'admin'], ['settings', 'gear', 'Settings', '#8fb3c9']];
+const NAV_BY = Object.fromEntries(NAV.flatMap(([g, ic, col, items]) => items.filter(x => x !== '-').map(x => [x[0], [x[0], x[1], x[2], col, g]])).concat(NAV_SYS.map(x => [x[0], x])));
+NAV_BY.upload = NAV_BY.up_ncrp;
+const NAVOPEN = {};
 const VIEWS = {}; let CHARTS = [];
 function killCharts() { CHARTS.forEach(c => { try { c.destroy(); } catch {} }); CHARTS = []; }
 function mkChart(canvas, cfg) {
@@ -51,8 +54,15 @@ function renderShell() {
   const gs = $('#gsearch'); if (gs) gs.addEventListener('keydown', e => { if (e.key === 'Enter' && gs.value.trim()) globalSearch(gs.value.trim()); });
 }
 function renderNav() {
-  const c = S.cur; const cnt = { ncrp: c && c.work.ncrp.length ? nfmt(c.work.ncrp.length) : '', accounts: c ? c.accts.length : '', txns: c ? nfmt(c.txns.length) : '', telecom: c ? nfmt(c.telecom.cdr.length) : '', ip: c ? nfmt(c.ip.logs.length) : '', users: isAdmin() && ADM.pending ? ADM.pending + ' new' : '' };
-  $('#nav').innerHTML = NAV.map(([g, items]) => { const vis = items.filter(x => x[4] !== 'admin' || isAdmin()); return vis.length ? `<div class="grp">${g}</div>` + vis.map(([k, ic, t, col]) => `<a data-v="${k}" class="${S.view === k ? 'on' : ''}${!c && !['cases', 'settings', 'backup', 'users'].includes(k) ? ' needcase' : ''}" title="${!c && !['cases', 'settings', 'backup', 'users'].includes(k) ? 'Open a case first' : ''}" style="--pc:${col}">${icon(ic)}${t}${cnt[k] ? `<span class="cnt">${cnt[k]}</span>` : ''}</a>`).join('') : ''; }).join('');
+  const c = S.cur; const FREE = ['cases', 'settings', 'backup', 'users'];
+  const cnt = { up_ncrp: c && c.work.ncrp.length ? nfmt(c.work.ncrp.length) : '', up_bank: c ? c.accts.filter(a => (IX.txByAcct.get(a.id) || []).length).length + '/' + c.accts.length : '', up_cdr: c && c.telecom.cdr.length ? uniq(c.telecom.cdr.map(r => r.target)).length : '', up_ip: c && c.ip.logs.length ? nfmt(c.ip.logs.length) : '', accounts: c ? c.accts.length : '', txns: c ? nfmt(c.txns.length) : '', users: isAdmin() && ADM.pending ? ADM.pending + ' new' : '', leads: '' };
+  const cur = NAV_BY[S.view === 'upload' ? 'up_ncrp' : S.view]; if (cur && cur[4] && NAVOPEN[cur[4]] === undefined) NAVOPEN[cur[4]] = true;
+  if (!Object.keys(NAVOPEN).length) NAVOPEN.UPLOAD = true;
+  const link = (k, ic, t, col) => `<a data-v="${k}" class="${S.view === k ? 'on' : ''}${!c && !FREE.includes(k) ? ' needcase' : ''}" title="${!c && !FREE.includes(k) ? 'Open a case first' : esc(t)}" style="--pc:${col}">${icon(ic)}<span>${t}</span>${cnt[k] ? `<span class="cnt">${cnt[k]}</span>` : ''}</a>`;
+  $('#nav').innerHTML = NAV.map(([g, ic, col, items]) => `<div class="ngrp ${NAVOPEN[g] ? 'open' : ''}" style="--pc:${col}"><button class="nhead" data-g="${g}">${icon(ic)}<span>${g}</span><i class="chev">▾</i></button>
+      <div class="nitems">${items.map(x => x === '-' ? '<div class="ndiv">More tools</div>' : link(x[0], x[1], x[2], col)).join('')}</div></div>`).join('') +
+    `<div class="nsys">${NAV_SYS.filter(x => x[4] !== 'admin' || isAdmin()).map(([k, ic, t, col]) => link(k, ic, t, col)).join('')}</div>`;
+  $$('#nav .nhead').forEach(b => b.onclick = () => { NAVOPEN[b.dataset.g] = !NAVOPEN[b.dataset.g]; renderNav(); });
   $$('#nav a').forEach(a => a.onclick = () => { $('#side').classList.remove('open'); go(a.dataset.v); });
 }
 function go(view, arg) {
@@ -60,7 +70,8 @@ function go(view, arg) {
   const FREE = ['cases', 'settings', 'backup', 'users'];
   if (!S.cur && !FREE.includes(view)) { toast(S.index.length ? 'Open a case first: click a case tile below.' : 'No case yet: click “＋ New case” or “▶ Load demo case” first.', 'warn', 4500); view = 'cases'; setTimeout(() => $$('#cNew,#cDemo,.tile').forEach(b => { b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 2400); }), 50); }
   if (view === 'users' && !isAdmin()) { toast('Only an admin can manage users.', 'err'); view = S.cur ? 'dashboard' : 'cases'; }
-  if (view === 'dashboard' && S.cur && !S.cur.meta.demo && !S.cur.txns.length && !S.cur.work.ncrp.length && !S.cur.telecom.cdr.length) view = 'upload';
+  if (view === 'upload') view = 'up_ncrp';
+  if (view === 'dashboard' && S.cur && !S.cur.meta.demo && !S.cur.txns.length && !S.cur.work.ncrp.length && !S.cur.telecom.cdr.length) view = 'up_ncrp';
   S.view = view; S.viewArg = arg; killCharts(); renderNav();
   const el = $('#content'); el.scrollTop = 0; el.innerHTML = '';
   try { (VIEWS[view] || VIEWS.dashboard)(el, arg); }
@@ -68,6 +79,7 @@ function go(view, arg) {
 }
 function pageHead(title, sub, actions = '') {
   const nv = NAV_BY[S.view] || ['', 'grid', '', '#00e5ff'];
+  if (nv[4] === 'ANALYSIS' && S.cur) actions += `<button class="btn-sm" data-ptask="${esc(title)}" title="Add an investigation task from this page">＋ Task</button>`;
   return `<div class="crumb">${esc(S.cur ? (S.cur.meta.crimeNo || S.cur.meta.id) : CONFIG.APP_NAME)} › ${esc(title)}</div><div class="pagehead"><div class="ph"><div class="hexi" style="--pc:${nv[3]}">${icon(nv[1])}</div><div><h2>${esc(title)}</h2>${sub ? `<p>${sub}</p>` : ''}</div></div><div class="row no-print">${actions}</div></div>`;
 }
 function kpi(label, value, sub = '', color = 'rgba(0,229,255,.3)') {
@@ -153,3 +165,5 @@ async function lockApp(reason) {
   $('#app').innerHTML = ''; $('#app').hidden = true; showVaultScreen(reason, true);
 }
 window.addEventListener('beforeunload', e => { if (S.dirty.size) { saveNow(); e.preventDefault(); e.returnValue = ''; } });
+
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-ptask]'); if (b && S.cur) taskDialog({ task: b.dataset.ptask + ': ' }); });

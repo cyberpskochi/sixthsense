@@ -11,12 +11,12 @@ const GraphKit = {
         <div class="seg">${lay.map(([k, ic, t]) => `<button class="btn-sm ${st.layout === k ? 'on' : ''}" data-lay="${k}" title="${t} layout">${icon(ic)}<span>${t}</span></button>`).join('')}</div>
         <div class="seg"><button class="btn-sm ${st.style === 'cards' || (st.style === 'auto' && ['tree', 'lr'].includes(st.layout)) ? 'on' : ''}" data-sty="cards" title="Show nodes as cards">▭ Cards</button><button class="btn-sm ${st.style === 'dots' || (st.style === 'auto' && !['tree', 'lr'].includes(st.layout)) ? 'on' : ''}" data-sty="dots" title="Show nodes as dots">● Dots</button><button class="btn-sm ${st.labels ? 'on' : ''}" data-lbl="1" title="Amounts on arrows">₹ Amounts</button></div>
         <div class="gk-search"><input id="gkQ" placeholder="Find account / UPI / mobile…" autocomplete="off"><button class="btn-sm" id="gkGo">⌕</button></div>
-        <div class="seg"><button class="btn-sm" id="gkFocus" title="Show only the money path through the selected node">◎ Focus path</button><button class="btn-sm" id="gkAll" title="Show everything">Show all</button></div>
+        <div class="seg"><button class="btn-sm" id="gkFocus" title="Show only the money path through the selected node">◎ Focus path</button><button class="btn-sm" id="gkCut" title="Hide the selected accounts / transactions (Shift+click to select several)">✂ Cut selected</button><button class="btn-sm" id="gkAll" title="Show everything again">Show all</button></div>
         <div class="seg"><button class="btn-sm" id="gkIn" title="Zoom in">＋</button><button class="btn-sm" id="gkOut" title="Zoom out">－</button><button class="btn-sm" id="gkFit" title="Fit to screen">⤢ Fit</button><button class="btn-sm" id="gkFull" title="Full screen">⛶</button><button class="btn-sm" id="gkPng" title="Save as picture">⇩ PNG</button></div>
         <div class="gk-stats">${(opt.stats || []).map(s => `<span class="chip ${s.cls || 'on'}">${esc(s.label)}: <b>${s.value}</b></span>`).join('')}</div>
       </div>
       ${opt.legend ? `<div class="legend gk-legend">${opt.legend}</div>` : ''}
-      <div class="gk-cv" id="gkCv"></div><div class="gk-tip" id="gkTip" hidden></div>
+      <div class="gk-cvw"><div class="gk-cv" id="gkCv"></div>${opt.layers ? `<div class="gk-layers" id="gkLay">${opt.layers.map(l => `<button class="gk-lq on" data-lk="${esc(l.key)}" style="--lc:${l.color}" title="Show / hide ${esc(l.title || l.label)}">${esc(l.label)}</button>`).join('')}</div>` : ''}</div><div class="gk-tip" id="gkTip" hidden></div>
       <div class="gk-hint small dim">Click a node for details · drag to move · scroll to zoom · select a node then “Focus path” to see only its money chain</div>
     </div>`;
     if (typeof cytoscape === 'undefined') { $('#gkCv', host).innerHTML = emptyState('Graph library not loaded.'); return null; }
@@ -35,6 +35,10 @@ const GraphKit = {
         { selector: 'edge[dash]', style: { 'line-style': 'dashed', 'target-arrow-shape': 'none' } },
         { selector: 'edge.lbl[label]', style: { label: 'data(label)', 'font-size': 9, color: '#070d1a', 'text-rotation': 'autorotate', 'text-background-color': '#dff6ff', 'text-background-opacity': 1, 'text-background-padding': 2, 'text-background-shape': 'round-rectangle', 'text-border-color': 'data(color)', 'text-border-width': 1, 'text-border-opacity': 1 } },
         { selector: '.dim', style: { opacity: 0.07 } },
+        { selector: '.cut', style: { display: 'none' } },
+        { selector: 'node.blink', style: { 'border-width': 6, 'border-color': 'data(blink)', 'overlay-color': 'data(blink)', 'overlay-opacity': 0.25, 'overlay-padding': 6 } },
+        { selector: 'node[hold]', style: { 'border-width': 4, 'border-style': 'double', 'border-color': '#00ff9d' } },
+        { selector: 'edge:selected', style: { 'line-color': '#ffffff', 'target-arrow-color': '#ffffff', width: 5 } },
         { selector: '.hit', style: { 'border-color': '#ff2e88', 'border-width': 5 } },
         { selector: 'node:selected', style: { 'border-color': '#ffffff', 'border-width': 4 } }] });
     const applyStyle = () => { cy.nodes().toggleClass('card', cardsOn()); cy.edges().toggleClass('lbl', !!st.labels); };
@@ -50,6 +54,13 @@ const GraphKit = {
     cy.on('mouseover', 'node', e => { const d = e.target.data(); if (!d.tip) return; tip.innerHTML = d.tip; tip.hidden = false; const p = e.renderedPosition; tip.style.left = (p.x + 16) + 'px'; tip.style.top = (p.y + 10) + 'px'; });
     cy.on('mouseout', 'node', () => { tip.hidden = true; });
     cy.on('tap', 'node', e => { tip.hidden = true; opt.onTap && opt.onTap(e.target.id(), e.target.data()); });
+    cy.on('tap', 'edge', e => { opt.onEdgeTap && opt.onEdgeTap(e.target.data()); });
+    // blinking cash-out nodes (ATM / cheque …)
+    const blinkers = cy.nodes('[blink]'); if (blinkers.length) { let on = false; const t = setInterval(() => { if (!host.isConnected) return clearInterval(t); on = !on; blinkers.toggleClass('blink', on); }, 650); }
+    // layer squares: show / hide a whole layer
+    const hidden = new Set(); const applyCut = () => { cy.batch(() => { cy.elements().removeClass('cut'); cy.nodes().filter(n => hidden.has(String(n.data('lk'))) || n.data('_cut')).addClass('cut'); cy.edges().filter(e => e.data('_cut') || e.source().hasClass('cut') || e.target().hasClass('cut')).addClass('cut'); }); };
+    $$('.gk-lq', host).forEach(b => b.onclick = () => { const k = b.dataset.lk; if (hidden.has(k)) hidden.delete(k); else hidden.add(k); b.classList.toggle('on', !hidden.has(k)); applyCut(); });
+    $('#gkCut', host).onclick = () => { const sel = cy.$(':selected'); if (!sel.length) return toast('Click an account or an amount box first (Shift+click to select several).', 'warn'); sel.forEach(x => x.data('_cut', 1)); sel.unselect(); applyCut(); toast(sel.length + ' item(s) hidden — “Show all” brings them back', 'ok', 2500); };
     $$('[data-lay]', host).forEach(b => b.onclick = () => { st.layout = b.dataset.lay; st.style = 'auto'; $$('[data-lay]', host).forEach(x => x.classList.toggle('on', x === b)); syncSty(); runLayout(); });
     const syncSty = () => { $$('[data-sty]', host).forEach(x => x.classList.toggle('on', (x.dataset.sty === 'cards') === cardsOn())); };
     $$('[data-sty]', host).forEach(b => b.onclick = () => { st.style = b.dataset.sty; syncSty(); runLayout(); });
@@ -63,7 +74,7 @@ const GraphKit = {
     };
     $('#gkGo', host).onclick = find; $('#gkQ', host).onkeydown = e => { if (e.key === 'Enter') find(); };
     $('#gkFocus', host).onclick = () => { const s = cy.$('node:selected'); if (!s.length) return toast('Click a node first, then Focus path.', 'warn'); const keep = s.union(s.predecessors()).union(s.successors()); cy.elements().addClass('dim'); keep.removeClass('dim'); cy.animate({ fit: { eles: keep, padding: 60 } }, { duration: 400 }); };
-    $('#gkAll', host).onclick = () => { cy.elements().removeClass('dim hit'); cy.fit(undefined, 30); };
+    $('#gkAll', host).onclick = () => { cy.elements().forEach(x => x.removeData('_cut')); hidden.clear(); $$('.gk-lq', host).forEach(b => b.classList.add('on')); cy.elements().removeClass('dim hit cut'); cy.fit(undefined, 30); };
     $('#gkIn', host).onclick = () => cy.zoom({ level: cy.zoom() * 1.25, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
     $('#gkOut', host).onclick = () => cy.zoom({ level: cy.zoom() / 1.25, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
     $('#gkFit', host).onclick = () => cy.fit(undefined, 30);

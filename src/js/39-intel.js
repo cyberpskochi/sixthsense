@@ -126,6 +126,7 @@ function anFusion() {
     for (const f of d.flows) { add(IX.txById.get(f.debit), 'Debit (transfer out)', f); if (f.credit) add(IX.txById.get(f.credit), 'Credit (money received)', f); }
     for (const s of d.seeds) add(s, 'Complainant debit', null);
     for (const t of anTestRaw()) add(t, 'Test transaction', null);
+    for (const x of anDormant()) { const t = (IX.txByAcct.get(x.a.id) || []).find(t => t.ts === x.restart); if (t) add(t, 'Dormant account reactivated', null); }
     // order of same-day events per account (for pairing with bank SMS when time is missing)
     const dayIdx = new Map(); for (const e of Array.from(ev.values()).sort((x, y) => x.tx.ts - y.tx.ts || x.tx.seq - y.tx.seq)) { const k = e.tx.acctId + '|' + dayKey(e.tx.ts); const n = dayIdx.get(k) || 0; e.k = n; dayIdx.set(k, n + 1); }
     const rows = [];
@@ -158,7 +159,7 @@ function anFusion() {
     const byAddr = new Map(); for (const x of allCell.values()) { const k = (x.addr || '').toUpperCase() || ('CELL ' + x.cell); let y = byAddr.get(k); if (!y) { y = { cell: x.cell, cells: [x.cell], addr: x.addr, lat: x.lat, lon: x.lon, nums: new Map() }; byAddr.set(k, y); } else y.cells.push(x.cell); for (const [n, v] of x.nums) y.nums.set(n, (y.nums.get(n) || 0) + v); }
     const sharedCells = Array.from(byAddr.values()).filter(x => x.nums.size >= 2).map(x => ({ cell: x.cells.slice(0, 4).join(', ') + (x.cells.length > 4 ? ' …' : ''), addr: x.addr, lat: x.lat, lon: x.lon, nums: Array.from(x.nums.keys()), names: Array.from(x.nums.keys()).map(n => (meta[n] || {}).name || ''), events: sum(Array.from(x.nums.values())), accts: uniq(Array.from(x.nums.keys()).flatMap(n => Array.from(num2acct.get(n) || []))) })).sort((a, b) => b.nums.length - a.nums.length || b.events - a.events);
     const topCells = Array.from(perNum.entries()).map(([n, m]) => { const tot = sum(Array.from(m.values())); const top = Array.from(m.entries()).sort((p, q) => q[1] - p[1]).slice(0, 3); return { num: n, name: (meta[n] || {}).name || '', role: (meta[n] || {}).role || '', accts: Array.from(num2acct.get(n) || []), top: top.map(([cell, k]) => ({ cell, addr: (allCell.get(cell) || {}).addr || '', n: k, pct: Math.round(k / tot * 100) })) }; });
-    return { rows, located: rows.filter(r => r.locs.length).length, timed: rows.filter(r => r.ts != null).length, commonCells, commonImei, sharedCells, topCells, hasCdr: cdr.length > 0 };
+    return { rows, byTx: new Map(rows.map(r => [r.t.id, r])), located: rows.filter(r => r.locs.length).length, timed: rows.filter(r => r.ts != null).length, commonCells, commonImei, sharedCells, topCells, hasCdr: cdr.length > 0 };
   });
 }
 
@@ -188,3 +189,15 @@ function anLocations() {
     return Array.from(M.values()).map(x => Object.assign(x, { src: Array.from(x.src), accts: Array.from(x.accts), nums: Array.from(x.nums), amt: round2(x.amt), link: x.accts.size >= 2 || x.nums.size >= 2 || x.src.size >= 2 })).sort((a, b) => (b.link - a.link) || b.accts.length - a.accts.length || b.amt - a.amt);
   });
 }
+
+/* nearest CDR record (with a cell / address) of a number around a time */
+function cdrIndex() { return intelCache('cdrIdx', () => { const cdr = S.cur.telecom.cdr; const m = new Map(); cdr.forEach((r, i) => { if (!m.has(r.target)) m.set(r.target, []); m.get(r.target).push(i); }); for (const v of m.values()) v.sort((a, b) => cdr[a].ts - cdr[b].ts); return m; }); }
+function cdrNear(num, ts, winMin = INTEL.fusionWinMin) {
+  const cdr = S.cur.telecom.cdr; const l = cdrIndex().get(num); if (!l || ts == null) return null; let lo = 0, hi = l.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (cdr[l[m]].ts < ts) lo = m + 1; else hi = m; }
+  let best = null; for (let j = Math.max(0, lo - 8); j < Math.min(l.length, lo + 8); j++) { const r = cdr[l[j]]; if (!r.cell && !r.addr) continue; const dt = Math.abs(r.ts - ts); if (dt <= winMin * 60000 && (!best || dt < best.dt)) best = { r, dt }; }
+  return best ? { num, cell: best.r.cell, addr: best.r.addr, lat: best.r.lat, lon: best.r.lon, imei: best.r.imei, at: best.r.ts, dt: Math.round(best.dt / 60000) } : null;
+}
+/* time of a transaction: statement → linked statement → bank SMS (from the fusion engine) */
+function txTime(t) { if (!t) return null; if (t.hasTime) return { ts: t.ts, src: 'Statement time' }; const r = anFusion().byTx.get(t.id); return r && r.ts != null ? { ts: r.ts, src: r.src } : null; }
+const locLabel = l => l ? (l.addr || ('Cell ' + l.cell)) : '';

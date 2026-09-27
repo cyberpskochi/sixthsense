@@ -37,6 +37,13 @@ const LOGO_SVG = `<defs><linearGradient id="ssg1" x1="0" y1="0" x2="1" y2="1"><s
 <circle cx="32" cy="9" r="2" fill="#00e5ff"/><circle cx="32" cy="51" r="2" fill="#00e5ff"/><circle cx="21" cy="48" r="1.8" fill="#ff2e88"/><circle cx="43" cy="48" r="1.8" fill="#ff2e88"/>`;
 function paintLogos(root = document) { $$('svg.logoSvg', root).forEach(s => s.innerHTML = LOGO_SVG); }
 
+/* Theme: 'pro' (calm, professional — default) or 'neon' (animated). A per-computer display preference only. */
+const Theme = {
+  get() { try { return localStorage.getItem('ss-theme') || 'pro'; } catch { return 'pro'; } },
+  set(v) { try { localStorage.setItem('ss-theme', v); } catch { } this.apply(); },
+  apply() { document.body.classList.toggle('pro', this.get() === 'pro'); const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = this.get() === 'pro' ? '#0b1220' : '#020912'; }
+};
+Theme.apply();
 const NetFx = {
   c: null, x: null, nodes: [], pk: [], w: 0, h: 0, intensity: 1, mouse: null, reduced: false, started: false,
   init() {
@@ -58,6 +65,7 @@ const NetFx = {
   },
   frame() {
     if (document.hidden || !this.x) return;
+    if (document.body.classList.contains('pro')) { this.x.clearRect(0, 0, this.w, this.h); setTimeout(() => requestAnimationFrame(() => this.frame()), 1500); return; }
     const x = this.x, N = this.nodes, D = 145, I = this.intensity, edges = [];
     x.clearRect(0, 0, this.w, this.h);
     for (const n of N) if (!this.reduced) { n.x += n.vx; n.y += n.vy; if (n.x < 0 || n.x > this.w) n.vx *= -1; if (n.y < 0 || n.y > this.h) n.vy *= -1; n.ph += .03; }

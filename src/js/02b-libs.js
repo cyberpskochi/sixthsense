@@ -2,7 +2,7 @@
    The sign-in screen appears immediately; the analysis libraries (Excel, PDF, graph, charts,
    PDF reports, map ≈ 2.5 MB) download in parallel while the officer signs in and unlocks.
    Every file is still checked with Subresource Integrity (sha384) before it runs.            */
-const LIB_GLOBAL = { xlsx: 'XLSX', pdfjs: 'pdfjsLib', cytoscape: 'cytoscape', chart: 'Chart', jspdf: 'jspdf', leaflet: 'L' };
+const LIB_GLOBAL = { xlsx: 'XLSX', pdfjs: 'pdfjsLib', cytoscape: 'cytoscape', chart: 'Chart', jspdf: 'jspdf', leaflet: 'L', docx: 'docx' };
 const Libs = {
   done: false, p: null, failed: [],
   one(s) {

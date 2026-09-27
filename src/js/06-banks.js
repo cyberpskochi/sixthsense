@@ -144,6 +144,10 @@ const FIELDS = {
       city: ['city', 'town', 'centre'], postOffice: ['postoffice', 'po'], district: ['district'], state: ['state'], pincode: ['pincode', 'pin', 'postalcode'], lat: ['latitude', 'lat'], lon: ['longitude', 'long', 'lon', 'lng']
     }
   },
+  psdb: {
+    label: 'Police stations list (name, district, state, phone, location)', required: [['name']],
+    f: { name: ['policestation', 'policestationname', 'psname', 'stationname', 'name', 'ps', 'station'], district: ['district', 'policedistrict', 'districtname'], state: ['state', 'statename', 'stateut'], phone: ['phone', 'phoneno', 'contactno', 'contact', 'mobile', 'telephone', 'landline', 'stdphone', 'shophone'], email: ['email', 'emailid'], address: ['address', 'location', 'place'], lat: ['latitude', 'lat'], lon: ['longitude', 'long', 'lon', 'lng'] }
+  },
   ifscdb: {
     label: 'IFSC master list (RBI / bank branch list)', required: [['ifsc']],
     f: {

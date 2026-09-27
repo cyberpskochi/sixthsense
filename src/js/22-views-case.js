@@ -30,13 +30,15 @@ function caseForm(existing) {
     <label class="f">Date of Registration<input id="f_reg" type="date" value="${esc(m.regDate || '')}"></label>
     <label class="f">Investigation Status<select id="f_st">${CASE_STATUS.map(t => `<option ${t === m.status ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
     <label class="f">Confidentiality<select id="f_conf">${CONF_LEVELS.map(t => `<option ${t === m.conf ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+    <label class="f" style="grid-column:1/-1">Sections of law (used in 94 BNSS letters)<input id="f_sec" value="${esc(m.sections || '318(4) and 319(2) of the Bharatiya Nyaya Sanhita, 2023 and 66(C), 66(D) of the Information Technology Act, 2000')}"></label>
+    <label class="f" style="grid-column:1/-1">Charges (used in 94 BNSS letters)<input id="f_chg" value="${esc(m.charges || 'Cheating and dishonestly inducing delivery of property and Cheating by personation')}"></label>
     <label class="f" style="grid-column:1/-1">Remarks<textarea id="f_rem" rows="2">${esc(m.remarks || '')}</textarea></label></div>`;
   const md = modal({ title: existing ? 'Edit case details' : 'New case', size: 'md', body, foot: `<button data-c>Cancel</button><button class="btn-p" data-s>${existing ? 'Save' : 'Create case'}</button>` });
   $('[data-c]', md.el).onclick = () => md.close();
   $('[data-s]', md.el).onclick = async () => {
     const v = id => $('#' + id, md.el).value.trim(); const id = existing ? m.id : v('f_id').replace(/[^\w\-\/. ]/g, '').trim();
     if (!id) return toast('Case ID required', 'warn'); if (!existing && S.index.some(x => x.id === id)) return toast('Case ID already exists', 'warn');
-    const meta = { id, crimeNo: v('f_crime'), ps: v('f_ps'), district: v('f_dist'), io: v('f_io'), type: v('f_type'), regDate: v('f_reg'), status: v('f_st'), conf: v('f_conf'), remarks: v('f_rem') };
+    const meta = { id, crimeNo: v('f_crime'), ps: v('f_ps'), district: v('f_dist'), io: v('f_io'), type: v('f_type'), regDate: v('f_reg'), status: v('f_st'), conf: v('f_conf'), remarks: v('f_rem'), sections: v('f_sec'), charges: v('f_chg') };
     if (existing) { Object.assign(S.cur.meta, meta); markDirty('meta'); await audit('Edited case details', JSON.stringify(meta).slice(0, 300)); md.close(); renderShell(); go('dashboard'); }
     else { await createCase(meta); md.close(); renderShell(); go('upload'); toast('Case created. Upload the statements, NCRP report and CDRs.', 'ok'); }
   };

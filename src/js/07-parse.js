@@ -13,13 +13,24 @@ async function readGrids(file, onProg) {
   const name = file.name.toLowerCase(); const buf = await file.arrayBuffer();
   const hash = await sha256Hex(buf);
   if (name.endsWith('.pdf')) return { hash, grids: await pdfGrids(buf, onProg), type: 'PDF' };
-  if (/\.(txt|dat|tsv|psv)$/.test(name)) {
-    const text = new TextDecoder().decode(buf); const lines = text.split(/\r?\n/).filter(l => l.trim());
-    const cand = ['\t', '|', ',', ';']; const sample = lines.slice(0, 30).join('\n');
-    const delim = cand.map(d => [d, sample.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
-    const rows = lines.map(l => splitDelim(l, delim)); return { hash, type: 'TEXT', grids: [{ sheet: 'text', rows, rowRef: rows.map((_, i) => ({ row: i + 1 })) }] };
+  const head = new TextDecoder().decode(buf.slice(0, 2048)).toLowerCase();
+  if (/\.(html?|mht|mhtml)$/.test(name) || (/\.(xls|txt|dat|rpt)$/.test(name) && /<html|<table|<!doctype html/.test(head))) { // HTML statements (also .xls files that are really HTML)
+    let text = new TextDecoder().decode(buf); if (/\.mhtm?l?$/.test(name) || /content-transfer-encoding:\s*quoted-printable/i.test(text.slice(0, 5000))) text = text.replace(/=\r?\n/g, '').replace(/=([0-9A-F]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
+    const wb = XLSX.read(text, { type: 'string', dense: true }); return { hash, type: 'HTML', grids: wbGrids(wb) };
+  }
+  if (/\.(txt|dat|tsv|psv|rpt|prn|lst)$/.test(name)) {
+    const text = new TextDecoder().decode(buf); const lines = text.split(/\r?\n/).filter(l => l.trim() && !/^[-=_*\s]{8,}$/.test(l));
+    const cand = ['\t', '|', ',', ';']; const sample = lines.slice(0, 40);
+    const score = d => { const cnts = sample.map(l => l.split(d).length - 1).filter(n => n > 0); return cnts.length >= sample.length * .5 ? cnts.reduce((a, b) => a + b, 0) / cnts.length : 0; };
+    const best = cand.map(d => [d, score(d)]).sort((a, b) => b[1] - a[1])[0];
+    // fixed-width bank reports (.rpt / .prn): split on runs of 2+ spaces
+    const rows = best[1] >= 2 ? lines.map(l => splitDelim(l, best[0])) : lines.map(l => l.trim().split(/\s{2,}/).map(x => x.trim()));
+    return { hash, type: best[1] >= 2 ? 'TEXT' : 'REPORT', grids: [{ sheet: 'text', rows, rowRef: rows.map((_, i) => ({ row: i + 1 })) }] };
   }
   const wb = XLSX.read(buf, { type: 'array', cellDates: false, cellNF: true, raw: /\.csv$/.test(name), dense: true });
+  return { hash, grids: wbGrids(wb), type: /\.csv$/.test(name) ? 'CSV' : 'EXCEL' };
+}
+function wbGrids(wb) {
   const grids = [];
   for (const sn of wb.SheetNames) {
     const ws = wb.Sheets[sn]; if (!ws || !ws['!ref']) continue;
@@ -32,7 +43,7 @@ async function readGrids(file, onProg) {
     }
     if (rows.some(r => r.some(v => v !== ''))) grids.push({ sheet: sn, rows, rowRef: rows.map((_, i) => ({ row: range.s.r + i + 1 })) });
   }
-  return { hash, grids, type: /\.csv$/.test(name) ? 'CSV' : 'EXCEL' };
+  return grids;
 }
 function splitDelim(line, d) {
   if (d !== ',') return line.split(d).map(s => s.trim().replace(/^"|"$/g, ''));

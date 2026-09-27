@@ -230,6 +230,12 @@ function normAtm(grid, hdr, opts) {
   }
   return out;
 }
+function normPsDb(grid, hdr, opts) {
+  const { map } = hdr; const out = [];
+  for (let r = hdr.row + (hdr.rows || 1); r < grid.rows.length; r++) { const row = grid.rows[r]; const get = f => map[f] !== undefined ? cellText(row[map[f]]) : ''; const name = get('name'); if (!name) continue; const lat = parseFloat(get('lat')), lon = parseFloat(get('lon'));
+    out.push({ name, district: get('district'), state: get('state'), phone: get('phone'), email: get('email'), address: get('address'), lat: isFinite(lat) && lat > 5 && lat < 38 ? lat : null, lon: isFinite(lon) && lon > 67 && lon < 99 ? lon : null }); }
+  return out;
+}
 function normIfscDb(grid, hdr, opts) {
   const { map } = hdr; const out = [];
   for (let r = hdr.row + (hdr.rows || 1); r < grid.rows.length; r++) {
