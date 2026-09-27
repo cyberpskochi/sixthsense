@@ -26,6 +26,18 @@ const IFSC_PREFIX = {
   MSNU: 'Mehsana Urban Co-op Bank', NKGS: 'NKGSB Co-op Bank', KCCB: 'Kalupur Commercial Co-op Bank', ZSBL: 'Zoroastrian Co-op Bank', GBCB: 'Greater Bombay Co-op Bank'
 };
 const IFSC_RX = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+/* Gets the reference-data key from the access server and checks it against the fingerprint built into this version,
+   so a wrong / old REF_KEY gives a clear message instead of a silent decryption failure. */
+async function refKeyChecked(keyB64) {
+  let key = keyB64; if (!key) { const r = await Backend.call('refKey'); key = r.key; }
+  key = String(key || '').replace(/\s+/g, '');
+  if (!key) throw new Error('The access server did not return a key (REF_KEY is empty in Apps Script → Project Settings → Script properties).');
+  let raw; try { raw = b64.dec(key); } catch { throw new Error('REF_KEY in Apps Script is not a valid key — copy it again from the key file (the long code ending with =).'); }
+  if (raw.length !== 32) throw new Error('REF_KEY in Apps Script has the wrong length — copy the whole code from the key file again.');
+  if (typeof REF_KEY_FP === 'string' && REF_KEY_FP) { const fp = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw))).slice(0, 4).map(b => b.toString(16).padStart(2, '0')).join('');
+    if (fp !== REF_KEY_FP) throw new Error(`Key mismatch: REF_KEY in Apps Script (fingerprint ${fp}) is not the key this version of the app needs (fingerprint ${REF_KEY_FP}). Paste the key from the latest NEW_REF_KEY file into Apps Script → Script properties → REF_KEY and save, then sign out and sign in again. If you just uploaded to GitHub, wait for the green ✓ and press Ctrl + Shift + R.`); }
+  return key;
+}
 const GEO = {
   ifsc: new Map(), atm: new Map(), term: new Map(), ps: [], loaded: false, _t: null, online: false,
   ATM_COLS: ['atmId', 'term', 'cbs', 'bank', 'address', 'city', 'district', 'state', 'pincode', 'lat', 'lon'],
@@ -44,7 +56,7 @@ const GEO = {
   loadRef(keyB64) {
     if (this._refP) return this._refP;
     this._refP = (async () => {
-      const key = keyB64 || (await Backend.call('refKey')).key;
+      const key = await refKeyChecked(keyB64);
       const r = await fetch(CONFIG.REF_ATM_URL, { cache: 'default', credentials: 'omit' }); if (!r.ok) throw new Error('ATM reference file not found on the site');
       const buf = new Uint8Array(await r.arrayBuffer()); const magic = new TextDecoder().decode(buf.slice(0, 7)); if (magic !== 'SSREF1\n') throw new Error('Not a SIXTH SENSE reference file');
       const k = await crypto.subtle.importKey('raw', b64.dec(key), 'AES-GCM', false, ['decrypt']);

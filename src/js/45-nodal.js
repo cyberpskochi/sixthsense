@@ -201,14 +201,14 @@ const NODAL = {
       let doc = null;
       if (!doc) {
         if (!keyB64 && !Backend.on()) throw new Error('The directory opens after signing in with Google through the access server.');
-        const key = keyB64 || (await Backend.call('refKey')).key;
+        const key = await refKeyChecked(keyB64);
         let buf; if (typeof NODAL_REF_B64 === 'string' && NODAL_REF_B64) buf = b64.dec(NODAL_REF_B64); else { const r = await fetch(CONFIG.REF_NODAL_URL, { cache: 'default', credentials: 'omit' }); if (!r.ok) throw new Error('Directory file not found on the site'); buf = new Uint8Array(await r.arrayBuffer()); } if (new TextDecoder().decode(buf.slice(0, 7)) !== 'SSREF1\n') throw new Error('Not a SIXTH SENSE reference file');
         const k = await crypto.subtle.importKey('raw', b64.dec(key), 'AES-GCM', false, ['decrypt']);
         const z = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: buf.slice(7, 19), additionalData: new TextEncoder().encode('SIXTHSENSE-REF-NODAL-V1') }, k, buf.slice(19));
         doc = JSON.parse(await gunzip(new Uint8Array(z)));
       }
       this.build(doc); this.info = { rows: doc.rows.length, created: doc.created, official: (doc.official || []).length, local: !!doc.local }; this.loaded = true; this.err = '';
-    })().catch(e => { this._p = null; this.err = e.message; throw e; });
+    })().catch(e => { this._p = null; this.err = e.message || (e.name === 'OperationError' ? 'The key from the access server could not open the directory — REF_KEY in Apps Script does not match this version of the app.' : String(e)); throw e; });
     return this._p;
   },
   reset() { this.orgs = []; this.byId = new Map(); this.loaded = false; this._p = null; this.user = []; this.flags = {}; },

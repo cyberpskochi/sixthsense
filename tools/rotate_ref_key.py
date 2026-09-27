@@ -19,7 +19,7 @@ for rel, aad in FILES:
 for p, data in done: p.write_bytes(data); print('re-encrypted', p.relative_to(root), f'{len(data)/1e3:.0f} KB')
 nodal = root / 'data/nodal-ref.enc'
 if nodal.exists():
-    (root / 'src/js/46-nodal-data.js').write_text('/* Encrypted nodal officers directory (AES-256-GCM). Opens only with the key the access server gives approved officers. */\nconst NODAL_REF_B64 = "' + base64.b64encode(nodal.read_bytes()).decode() + '";\n')
+    (root / 'src/js/46-nodal-data.js').write_text('/* Encrypted nodal officers directory (AES-256-GCM). Opens only with the key the access server gives approved officers. */\nconst REF_KEY_FP = "' + __import__('hashlib').sha256(new).hexdigest()[:8] + '";\nconst NODAL_REF_B64 = "' + base64.b64encode(nodal.read_bytes()).decode() + '";\n')
     print('rewrote src/js/46-nodal-data.js')
 kf = root / 'NEW_REF_KEY.txt'
 kf.write_text('SIXTH SENSE - NEW reference data key\n\nApps Script > Project Settings > Script properties > REF_KEY = \n' + base64.b64encode(new).decode() + '\n\nPaste it, upload the changed files to GitHub, then DELETE this file. Never commit it.\n')
