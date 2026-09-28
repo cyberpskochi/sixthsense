@@ -16,10 +16,11 @@ const ncrpDT = (ts, hasTime) => ts ? fmtDT(ts, hasTime) : '';
 function ncrpModel(f = NCRPF) {
   const c = S.cur; let rows = c.work.ncrp.slice();
   if (f.ack) rows = rows.filter(r => r.ackNo === f.ack);
-  rows.sort((a, b) => (a.layer ?? 1) - (b.layer ?? 1) || (a.ts || 0) - (b.ts || 0));
+  rows.sort((a, b) => (!!a.actOnly - !!b.actOnly) || (a.layer ?? 99) - (b.layer ?? 99) || (a.ts || 0) - (b.ts || 0));
+  const disp = new Map(); const K = id => { if (!id) return ''; const k = acctKey(id); if (!disp.has(k)) disp.set(k, id); return disp.get(k); };
   const comp = c.accts.filter(a => a.layerNcrp === 0 || /complainant|victim/i.test(a.role || ''));
-  const victimId = comp.length === 1 ? comp[0].acctNo : 'VICTIM';
-  const N = new Map(), H = []; const hopByKey = new Map(); const issues = { orphan: [], assumed: [], noDetail: [] };
+  const victimId = comp.length === 1 ? K(comp[0].acctNo) : 'VICTIM';
+  const N = new Map(), H = []; const hopByKey = new Map(); const issues = { orphan: [], assumed: [], noDetail: [], unlinked: [] };
   const hasDisp = rows.some(r => r.disputed > 0);
   const node = (id, layer, o = {}, own = false) => {
     if (!id) return null; let n = N.get(id);
@@ -30,57 +31,59 @@ function ncrpModel(f = NCRPF) {
   const addHop = (from, to, o) => {
     const k = o.utr ? from + '>' + to + '>' + o.utr : null; let h = k ? hopByKey.get(k) : null;
     if (h) { for (const r of o.rows || []) if (!h.rows.includes(r)) h.rows.push(r); if (!h.ts && o.ts) { h.ts = o.ts; h.hasTime = !!o.hasTime; } if (!h.amount && o.amount) h.amount = o.amount; return h; }
-    h = { id: 'H' + H.length, from, to, utr: o.utr || '', amount: round2(o.amount || 0), ts: o.ts || null, hasTime: !!o.hasTime, layer: o.layer, kind: o.kind || 'money', action: o.action || '', basis: o.basis || '', rows: (o.rows || []).slice(), ifsc: o.ifsc || '' };
+    h = { id: 'H' + H.length, from, to, utr: o.utr || '', amount: round2(o.amount || 0), disputed: o.disputed || 0, ts: o.ts || null, hasTime: !!o.hasTime, layer: o.layer, kind: o.kind || 'money', action: o.action || '', basis: o.basis || '', rows: (o.rows || []).slice(), ifsc: o.ifsc || '' };
     H.push(h); if (k) hopByKey.set(k, h); return h;
   };
   const amtOf = r => r.amount || r.disputed || 0;
   const pending = []; // "Money Transfer to" rows waiting for their layer N+1 credit
   // pass 1 — accounts, actions, cash-outs, holds
   for (const r of rows) {
-    const L = r.layer ?? 1; const n = node(r.acctNo, L, { bank: r.bank, ifsc: r.ifsc }, true); if (!n) continue;
+    const L = r.layer ?? (r.actOnly ? null : 1); const n = node(K(r.acctNo), L, { bank: r.bank, ifsc: r.ifsc }, true); if (!n) continue;
+    if (L == null) issues.unlinked.push(r);
     n.rows.push(r); const actAmt = r.toAmount || amtOf(r);
     if (r.action) n.act[r.action] = round2((n.act[r.action] || 0) + (r.action === 'HOLD' ? (r.hold || actAmt) : actAmt));
     n.hold += r.hold || (r.action === 'HOLD' ? actAmt : 0);
-    if (r.toAcct) { node(r.toAcct, L + 1, { ifsc: r.toIfsc, bank: r.toBank }); pending.push({ r, from: r.acctNo, to: r.toAcct, L, hop: null }); }
+    if (K(r.toAcct)) { node(K(r.toAcct), L + 1, { ifsc: r.toIfsc, bank: r.toBank }); pending.push({ r, from: K(r.acctNo), to: K(r.toAcct), L, hop: null }); }
     if (CASH_ACTS.includes(r.action)) {
       n.cash += actAmt; if (r.action === 'ATM') n.atms.push(r);
-      if (f.cash) { const xid = 'X:' + r.action + ':' + (r.atmId || r.acctNo) + ':L' + L; let x = N.get(xid);
+      if (f.cash) { const xid = 'X:' + r.action + ':' + (r.atmId || K(r.acctNo)) + ':L' + L; let x = N.get(xid);
         if (!x) { x = { id: xid, layer: L, exit: r.action, label: r.action === 'ATM' ? 'ATM ' + (r.atmId || '') : ACT_NAME[r.action], place: r.atmPlace || r.merchant || '', in: 0, rows: [], act: {}, atms: [], hin: [], hout: [] }; N.set(xid, x); }
-        x.rows.push(r); addHop(r.acctNo, xid, { utr: r.toUtr || '', amount: actAmt, ts: r.toTs || r.ts, hasTime: r.toTs ? true : r.hasTime, layer: L, kind: 'cash', action: r.action, rows: [r], basis: r.toTs || r.toAmount ? 'Action columns of the NCRP row' : 'Layer ' + L + ' row' }); }
+        x.rows.push(r); addHop(K(r.acctNo), xid, { utr: r.toUtr || '', amount: actAmt, ts: r.toTs || r.ts, hasTime: r.toTs ? true : r.hasTime, layer: L, kind: 'cash', action: r.action, rows: [r], basis: r.toTs || r.toAmount ? 'Action columns of the NCRP row' : 'Layer ' + L + ' row' }); }
     }
   }
   // pass 2 — the credit INTO each account (victim → Layer 1, Layer N-1 → Layer N)
   const pendTo = groupBy(pending, p => p.to);
   let fraud = 0; const seenL1 = new Set();
   for (const r of rows) {
-    const L = r.layer ?? 1; if (!r.acctNo) continue;
+    if (r.actOnly) { const ex = H.find(h => h.to === K(r.acctNo) && h.kind === 'money' && (!r.utr || normUtr(h.utr) === normUtr(r.utr))) || H.find(h => h.to === K(r.acctNo) && h.kind === 'money'); if (ex && !ex.rows.includes(r)) ex.rows.push(r); continue; }
+    const L = r.layer ?? 1; if (!K(r.acctNo)) continue;
     const inHop = { utr: r.utr, amount: L === 1 ? (r.disputed || amtOf(r)) : amtOf(r), ts: r.ts, hasTime: r.hasTime, layer: L, action: 'CREDIT', rows: [r] };
-    if (L <= 1 || (r.fromAcct && !pendTo.get(r.acctNo))) {
-      if (L <= 1 && hasDisp && !(r.disputed > 0) && !r.fromAcct) { // an action-only Layer-1 row: attach to the existing credit
-        const ex = H.find(h => h.to === r.acctNo && h.action === 'CREDIT' && (!r.utr || h.utr === r.utr)); if (ex) { ex.rows.push(r); continue; } }
-      const src = r.fromAcct || (L <= 1 ? victimId : null);
-      if (src) { node(src, Math.max(0, L - 1), {}); const h = addHop(src, r.acctNo, Object.assign(inHop, { basis: L <= 1 ? 'Disputed transaction (complainant → Layer 1)' : 'From-account column of the report' }));
+    if (L <= 1 || (K(r.fromAcct) && !pendTo.get(K(r.acctNo)))) {
+      if (L <= 1 && hasDisp && !(r.disputed > 0) && !K(r.fromAcct)) { // an action-only Layer-1 row: attach to the existing credit
+        const ex = H.find(h => h.to === K(r.acctNo) && h.action === 'CREDIT' && (!r.utr || h.utr === r.utr)); if (ex) { ex.rows.push(r); continue; } }
+      const src = K(r.fromAcct) || (L <= 1 ? victimId : null);
+      if (src) { node(src, Math.max(0, L - 1), { bank: r.fmt === 'trail' ? r.actBank : '' }); const h = addHop(src, K(r.acctNo), Object.assign(inHop, { basis: L <= 1 ? 'Disputed transaction (complainant → Layer 1)' : r.fmt === 'trail' ? 'Money Transfer to — as reported' : 'From-account column of the report', disputed: r.disputed }));
         if (L <= 1) { const k = r.utr || h.id; if (!seenL1.has(k)) { seenL1.add(k); fraud += h.amount || 0; } } continue; }
     }
     // a row without its own UTR repeats an account already credited → attach to that credit
-    if (!r.utr) { const ex = H.find(h => h.to === r.acctNo && h.kind === 'money'); if (ex) { if (!ex.rows.includes(r)) ex.rows.push(r); continue; } }
+    if (!r.utr) { const ex = H.find(h => h.to === K(r.acctNo) && h.kind === 'money'); if (ex) { if (!ex.rows.includes(r)) ex.rows.push(r); continue; } }
     // already linked with the same UTR (several action rows repeat the same credit)
-    const same = r.utr && H.find(h => h.to === r.acctNo && h.utr === r.utr && h.action === 'CREDIT'); if (same) { if (!same.rows.includes(r)) same.rows.push(r); continue; }
-    const cand = pendTo.get(r.acctNo) || [];
+    const same = r.utr && H.find(h => h.to === K(r.acctNo) && h.utr === r.utr && h.action === 'CREDIT'); if (same) { if (!same.rows.includes(r)) same.rows.push(r); continue; }
+    const cand = pendTo.get(K(r.acctNo)) || [];
     let p = cand.find(q => q.r.toUtr && r.utr && normUtr(q.r.toUtr) === normUtr(r.utr)), basis = 'Exact UTR match';
     if (!p) { const open = cand.filter(q => !q.hop);
       p = amtOf(r) ? open.find(q => q.r.toAmount && Math.abs(q.r.toAmount - amtOf(r)) < 1) : null; basis = 'Same amount';
       if (!p && open.length) { open.sort((a, b) => Math.abs((a.r.toTs || a.r.ts || 0) - (r.ts || 0)) - Math.abs((b.r.toTs || b.r.ts || 0) - (r.ts || 0))); p = open[0]; basis = open.length === 1 && uniq(cand.map(q => q.from)).length === 1 ? 'Only transfer to this account' : 'Nearest time (please verify)'; }
     }
     if (p) {
-      const h = addHop(p.from, r.acctNo, Object.assign(inHop, { utr: r.utr || p.r.toUtr, amount: p.r.toAmount && basis === 'Exact UTR match' ? p.r.toAmount : (amtOf(r) || p.r.toAmount), ts: r.ts || p.r.toTs, hasTime: r.ts ? r.hasTime : !!p.r.toTs, basis, rows: [p.r, r] }));
+      const h = addHop(p.from, K(r.acctNo), Object.assign(inHop, { utr: r.utr || p.r.toUtr, amount: p.r.toAmount && basis === 'Exact UTR match' ? p.r.toAmount : (amtOf(r) || p.r.toAmount), ts: r.ts || p.r.toTs, hasTime: r.ts ? r.hasTime : !!p.r.toTs, basis, rows: [p.r, r] }));
       h.action = 'TRANSFER'; p.hop = h; if (/verify/.test(basis)) issues.assumed.push(h); continue;
     }
     if (cand.length) { // every onward transfer to this account is already linked — same sender, another credit
-      const h = addHop(cand[0].from, r.acctNo, Object.assign(inHop, { basis: 'Additional credit from the same sender (please verify)', rows: [r] })); h.action = 'TRANSFER'; issues.assumed.push(h); continue; }
+      const h = addHop(cand[0].from, K(r.acctNo), Object.assign(inHop, { basis: 'Additional credit from the same sender (please verify)', rows: [r] })); h.action = 'TRANSFER'; issues.assumed.push(h); continue; }
     // no Layer N-1 row sends money here → keep it visible with an explicit "sender not in report" box
     const uid = 'U:' + (L - 1); if (!N.has(uid)) N.set(uid, { id: uid, layer: L - 1, rl: L - 1, unknown: true, bank: 'Not in report', ifsc: '', in: 0, out: 0, hold: 0, cash: 0, act: {}, rows: [], atms: [], hin: [], hout: [] });
-    const h = addHop(uid, r.acctNo, Object.assign(inHop, { basis: 'Sender not found in the report' })); h.action = 'TRANSFER'; issues.orphan.push(h);
+    const h = addHop(uid, K(r.acctNo), Object.assign(inHop, { basis: 'Sender not found in the report' })); h.action = 'TRANSFER'; issues.orphan.push(h);
   }
   // pass 3 — onward transfers whose Layer N+1 row is not in the report
   for (const p of pending) {
@@ -180,23 +183,24 @@ VIEWS.ncrp = async el => {
   const cut = (s, k) => { s = String(s || ''); return s.length > k ? s.slice(0, k - 1) + '…' : s; };
   const nodes = show.map(n => {
     if (n.exit) { const h0 = n.rows[0] || {}; const when = n.rows.length === 1 ? ncrpDT(h0.toTs || h0.ts, h0.toTs ? true : h0.hasTime) : n.rows.length + ' withdrawals';
-      return { id: n.id, label: n.label, lv: (n.layer ?? 0) + 0.5, card: [`${n.exit === 'ATM' ? '🏧' : '💵'} ${n.label}`, cut(n.place, 34) || ACT_NAME[n.exit], `${inr(n.in)} · ${when}`].join('\n'), ch: 66, cw: 240,
+      return { id: n.id, label: n.label, lv: n.layer == null ? 99.5 : n.layer + 0.5, card: [`${n.exit === 'ATM' ? '🏧' : '💵'} ${n.label}`, cut(n.place, 34) || ACT_NAME[n.exit], `${inr(n.in)} · ${when}`].join('\n'), ch: 66, cw: 240,
         sub: [n.place, inrShort(n.in)].filter(Boolean).join(' | '), badge: n.exit === 'ATM' ? 'ATM' : n.exit === 'CHEQUE' ? 'CHQ' : n.exit, color: NEXIT_COL[n.exit] || '#ff6e40', blink: ['ATM', 'CHEQUE', 'CASH'].includes(n.exit) ? (NEXIT_COL[n.exit] || '#ff3b30') : undefined, lk: 'X' + n.exit, layer: n.layer, size: 20, shape: 'round-rectangle', tip: `<b>${esc(n.label)}</b><br>${esc(n.place || '')}<br>${inr(n.in)} · ${n.rows.length} txn` }; }
     if (n.unknown) return { id: n.id, label: 'Sender not in report', lv: n.layer, layer: n.layer, lk: 'L' + n.layer, color: '#8a94a6', card: `⚠ Sender not in report\nLayer ${n.layer} row missing\nsee Report check`, ch: 66, cw: 240, size: 20, tip: 'The report has Layer ' + (n.layer + 1) + ' rows whose sender is not listed at Layer ' + n.layer };
     const isV = n.layer === 0; const br = n.info && (n.info.branch || n.info.city) ? cut([n.info.branch, n.info.state].filter(Boolean).join(', '), 38) : (n.ifsc ? 'Branch: IFSC not in database' : '');
     const h1 = n.hin[0]; const inLine = isV ? `Sent ${inr(n.out)} · ${n.hout.length} txn` : h1 ? `${ncrpDT(h1.ts, h1.hasTime) || 'date not in report'} · UTR ${cut(h1.utr || 'n/a', 16)}${n.hin.length > 1 ? ' (+' + (n.hin.length - 1) + ')' : ''}` : 'no credit row';
     const tail = isV ? '' : `In ${inr(n.in)}${n.hold ? ' · HOLD ' + inrShort(n.hold) : ''}${n.cash ? ' · cash ' + inrShort(n.cash) : ''}`;
-    return { id: n.id, label: n.id === 'VICTIM' ? 'Victim account(s)' : n.id, lv: n.layer ?? 0, w8: n.in,
-      card: [`${isV ? 'COMPLAINANT' : 'L' + (n.layer ?? '?')}  ${n.id === 'VICTIM' ? 'Victim account(s)' : n.id}`, cut([n.bank || 'Bank n/a', n.ifsc].filter(Boolean).join(' · '), 40), br, inLine, tail].filter(Boolean).join('\n'), ch: isV ? 62 : 96, cw: 240,
-      sub: [n.bank || 'N/A', n.ifsc || 'N/A'].join(' | '), badge: isV ? 'V-AC' : 'L' + (n.layer ?? '?'), layer: n.layer, lk: 'L' + (n.layer ?? 0), color: nlc(n.layer), hold: n.hold > 0 ? 1 : undefined, size: 22 + Math.min(24, Math.sqrt((n.in || 0) / 2500)), search: [n.holder, n.bank, n.ifsc, ...n.hin.map(h => h.utr)].join(' '),
+    return { id: n.id, label: n.id === 'VICTIM' ? 'Victim account(s)' : n.id, lv: n.layer ?? 99, w8: n.in,
+      card: [`${isV ? 'COMPLAINANT' : n.layer == null ? 'NOT LINKED' : 'L' + n.layer}  ${n.id === 'VICTIM' ? 'Victim account(s)' : n.id}`, cut([n.bank || 'Bank n/a', n.ifsc].filter(Boolean).join(' · '), 40), br, inLine, tail].filter(Boolean).join('\n'), ch: isV ? 62 : 96, cw: 240,
+      sub: [n.bank || 'N/A', n.ifsc || 'N/A'].join(' | '), badge: isV ? 'V-AC' : 'L' + (n.layer ?? '?'), layer: n.layer, lk: 'L' + (n.layer ?? 'null'), color: n.layer == null ? '#8a94a6' : nlc(n.layer), hold: n.hold > 0 ? 1 : undefined, size: 22 + Math.min(24, Math.sqrt((n.in || 0) / 2500)), search: [n.holder, n.bank, n.ifsc, ...n.hin.map(h => h.utr)].join(' '),
       tip: `<b>${esc(n.id)}</b>${n.holder ? '<br>' + esc(n.holder) : ''}<br>${esc(n.bank || '')} ${esc(n.ifsc || '')}${br ? '<br>' + esc(br) : ''}<br>Layer ${n.layer ?? '?'} · in ${inr(n.in)}${n.hold ? '<br><b>On hold ' + inr(n.hold) + '</b>' : ''}<br><i>Click for all transactions</i>` };
   });
   const EL = Array.from(m.E.values()).filter(e => e.amount >= (NCRPF.min || 0));
   const edges = EL.map((e, i) => { const h = e.hops[0] || {}; const when = h.ts ? fmtDate(h.ts) + (h.hasTime ? ' ' + fmtTime(h.ts).slice(0, 5) : '') : '';
     return { id: 'ne' + i, ei: i, source: e.source, target: e.target, label: '₹' + nfmt(Math.round(e.amount)) + (e.n > 1 ? ' ×' + e.n : '') + (when ? '\n' + when : ''), w: 1.2 + Math.min(6, Math.max(0, Math.log10(e.amount + 1) - 2.5)), color: e.kind === 'cash' ? (NEXIT_COL[(m.N.get(e.target) || {}).exit] || '#ff6e40') : nlc((m.N.get(e.target) || {}).layer), dash: e.kind === 'cash' ? 1 : undefined }; });
-  const lays = uniq(show.filter(n => !n.exit).map(n => n.layer ?? 0)).sort((a, b) => a - b); const exits = uniq(show.filter(n => n.exit).map(n => n.exit));
+  const lays = uniq(show.filter(n => !n.exit && n.layer != null).map(n => n.layer)).sort((a, b) => a - b); const exits = uniq(show.filter(n => n.exit).map(n => n.exit));
   const titles = {}; lays.forEach(l => { const ns = show.filter(n => !n.exit && (n.layer ?? 0) === l && !n.unknown); titles[l] = { label: l === 0 ? 'COMPLAINANT' : `LAYER ${l}  ·  ${ns.length} a/c  ·  ${inrShort(sum(ns, n => n.in))}`, color: nlc(l), lk: 'L' + l }; });
-  uniq(show.filter(n => n.exit).map(n => (n.layer ?? 0) + 0.5)).forEach(v => { titles[v] = { label: 'CASH-OUT  ·  L' + Math.floor(v), color: '#ff6e40' }; });
+  uniq(show.filter(n => n.exit).map(n => n.layer == null ? 99.5 : n.layer + 0.5)).forEach(v => { titles[v] = { label: v > 99 ? 'CASH-OUT · NOT LINKED' : 'CASH-OUT  ·  L' + Math.floor(v), color: '#ff6e40' }; });
+  if (show.some(n => !n.exit && n.layer == null)) titles[99] = { label: 'NOT LINKED TO THE TRAIL', color: '#8a94a6', lk: 'Lnull' };
   GraphKit.mount($('#nGraph', el), { key: 'ncrp', file: 'ncrp_graph', defaultLayout: 'lr', strict: true, levelTitles: titles, nodes, edges, roots: m.roots,
     layers: lays.map(l => ({ key: 'L' + l, label: l === 0 ? 'V' : 'L' + l, color: nlc(l), title: l === 0 ? 'victim accounts' : 'layer ' + l })).concat(exits.map(x => ({ key: 'X' + x, label: x === 'CHEQUE' ? 'CHQ' : x, color: NEXIT_COL[x] || '#ff6e40', title: ACT_NAME[x] }))),
     stats: [{ label: 'Fraud amount', value: inrShort(m.fraud), cls: 'adm' }, { label: 'Hold', value: inrShort(holdTot) }],
@@ -239,7 +243,9 @@ VIEWS.ncrp = async el => {
           <li class="${m.issues.orphan.length ? 'bad' : 'ok'}">${m.issues.orphan.length ? `${m.issues.orphan.length} credit(s) whose sender is not in the report (shown as “Sender not in report”)` : 'Every Layer 2+ credit has its sender in the previous layer'}</li>
           <li class="${m.issues.assumed.length ? 'warn' : 'ok'}">${m.issues.assumed.length ? `${m.issues.assumed.length} link(s) chosen by nearest time — verify with the bank statement` : 'All links matched by UTR, amount or a single onward transfer'}</li>
           <li class="${hasTo ? 'ok' : 'warn'}">${hasTo ? 'Onward UTR / amount columns found in the report' : 'No separate onward UTR / amount columns — onward transfer details are taken from the next layer’s row'}</li>
-          <li class="${noL.length ? 'bad' : 'ok'}">${noL.length ? noL.length + ' row(s) without a layer number (treated as Layer 1)' : 'Every row has a layer number'}</li>
+          <li class="${m.issues.unlinked.length ? 'bad' : 'ok'}">${m.issues.unlinked.length ? m.issues.unlinked.length + ' action row(s) (hold / ATM / POS / cheque / other) on accounts not found in the money-transfer trail — shown as “Not linked”' : 'Every hold / withdrawal / other action is on an account in the trail'}</li>
+          <li class="${noL.filter(r => !r.actOnly).length ? 'bad' : 'ok'}">${noL.filter(r => !r.actOnly).length ? noL.filter(r => !r.actOnly).length + ' transfer row(s) without a layer number (treated as Layer 1)' : 'Every transfer row has a layer number'}</li>
+          <li class="dim">${m.rows.filter(r => r.layerDerived).length} hold / withdrawal / other row(s) took their layer from the transfer that credited the account (same UTR)</li>
           <li class="${noIfsc.length ? 'warn' : 'ok'}">${noIfsc.length ? noIfsc.length + ' IFSC code(s) not in the offline branch database: ' + esc(uniq(noIfsc.map(n => n.ifsc)).slice(0, 8).join(', ')) : 'Branch and location found for every IFSC'}</li>
           <li class="dim">IFSC database: ${esc(IFSCDB.stats().text)}</li></ul></div></div>
         ${m.issues.orphan.length + m.issues.assumed.length ? `<h4 style="margin-top:14px">Links to verify</h4>${simpleTable(hopCols, m.issues.orphan.concat(m.issues.assumed), { maxH: 300 })}` : ''}`;

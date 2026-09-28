@@ -42,7 +42,7 @@ function ncrpComplainants() {
   for (const a of c.accts) if (a.role === 'Complainant' || a.layerNcrp === 0) m.set(acctKey(a.acctNo), a.acctNo);
   return Array.from(m.values());
 }
-function ncrpFraudRows() { const rows = S.cur.work.ncrp.filter(r => (r.layer ?? 1) === 1); const disp = rows.some(r => r.disputed > 0); const seen = new Set(); return rows.filter(r => (!disp || r.disputed > 0) && !seen.has(r.utr || r.id) && seen.add(r.utr || r.id)); }
+function ncrpFraudRows() { const rows = S.cur.work.ncrp.filter(r => !r.actOnly && (r.layer ?? 1) === 1); const disp = rows.some(r => r.disputed > 0); const seen = new Set(); return rows.filter(r => (!disp || r.disputed > 0) && !seen.has(r.utr || r.id) && seen.add(r.utr || r.id)); }
 VIEWS.up_ncrp = el => {
   upReset(); const c = S.cur; const has = c.work.ncrp.length > 0;
   el.innerHTML = pageHead('NCRP Trail', 'Upload the transaction-details Excel of each acknowledgement number from the NCRP / I4C portal. SIXTH SENSE reads it at once: complainant accounts, reported fraud transactions, banks involved and how the money left the banking network.') + upSteps('up_ncrp') +

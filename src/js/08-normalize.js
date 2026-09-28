@@ -194,7 +194,55 @@ function normNcrp(grid, hdr, opts) {
       chequeNo: cellText(get('chequeNo')), mid: cellText(get('mid')), tid: cellText(get('tid')), merchant: cellText(get('merchant')), actionDate: cellText(get('actionDate')),
       src: { file: opts.fileName, sheet: grid.sheet, row: (grid.rowRef[r] || {}).row } });
   }
-  return out;
+  return ncrpTrailRows(out, grid, map);
+}
+/* I4C "Bank Action – Complete Trail" workbook: one sheet per action.
+   · "Money Transfer to": Account No./(Wallet/PG/PA) Id = SENDER, Account No + IFSC + Bank/FIs = BENEFICIARY,
+     Layer = layer of the BENEFICIARY, first UTR = the credit that brought money to the sender,
+     second UTR / amount / date = this transfer; "Action Taken By bank" = the sender's bank.
+   · "Transaction put on hold" / "Withdrawal through ATM / POS" / "Cash Withdrawal through Cheque" / "Other":
+     action on the account; its UTR is the credit (from the transfer sheet) the action relates to; no layer column.
+   Rows are converted to the canonical form used everywhere else: acctNo = account at `layer`, fromAcct = sender,
+   utr / amount / ts = the credit into acctNo; action rows carry actOnly + toAmount / toTs.            */
+const NCRP_ACT_WORDS = /transfer|withdraw|hold|lien|freez|atm|cheque|chq|pos\b|aeps|debit|refund|cash/i;
+function ncrpSheetKind(sheet) {
+  const n = String(sheet || '').toLowerCase();
+  if (/money\s*transfer/.test(n)) return 'TRANSFER'; if (/hold|lien|freez/.test(n)) return 'HOLD'; if (/\batm\b/.test(n)) return 'ATM';
+  if (/\bpos\b|point of sale/.test(n)) return 'POS'; if (/cheque|chq/.test(n)) return 'CHEQUE'; if (/aeps/.test(n)) return 'AEPS'; if (/^other/.test(n)) return 'OTHER'; return '';
+}
+const cleanTag = v => String(v || '').replace(/^\s*[^:]{0,20}:-\s*/, '').replace(/\s+/g, ' ').trim();
+function ncrpTrailRows(rows, grid, map) {
+  if (!rows.length) return rows;
+  let kind = ncrpSheetKind(grid.sheet);
+  const statusIsAction = rows.filter(r => NCRP_ACT_WORDS.test(r.status)).length > rows.length / 2;
+  if (!kind && !statusIsAction && map.toAcct !== undefined && map.layer !== undefined && map.toUtr !== undefined) kind = 'TRANSFER';
+  if (!kind || (kind !== 'TRANSFER' && statusIsAction && map.layer !== undefined)) return rows; // single-sheet layout: one row = account + action
+  const ACT_LABEL = { HOLD: 'Transaction put on hold', ATM: 'Withdrawal through ATM', POS: 'Withdrawal through POS', CHEQUE: 'Cash Withdrawal through Cheque', AEPS: 'Withdrawal through AEPS', OTHER: 'Other' };
+  return rows.map(r => {
+    const base = { fmt: 'trail', sheetKind: kind, actBank: r.status };
+    if (kind === 'TRANSFER') {
+      if (!r.toAcct) return Object.assign(r, base, { actOnly: true, action: 'OTHER', status: 'Money Transfer to (no beneficiary)' });
+      return Object.assign(r, base, { fromAcct: r.acctNo, acctNo: r.toAcct, toAcct: '', ifsc: r.toIfsc || r.ifsc, toIfsc: '', bank: r.toBank || r.bank, toBank: '',
+        parentUtr: r.utr, utr: r.toUtr || r.utr, toUtr: '', amount: r.toAmount || r.amount, toAmount: 0, ts: r.toTs || r.ts, hasTime: r.toTs ? true : r.hasTime, toTs: null,
+        status: 'Money Transfer to', action: '' });
+    }
+    const amt = r.toAmount || r.amount || r.hold;
+    return Object.assign(r, base, { actOnly: true, action: kind, status: ACT_LABEL[kind] + (r.remarks && kind === 'OTHER' ? ': ' + r.remarks : ''), toAcct: '', toIfsc: r.toIfsc || r.ifsc,
+      toAmount: amt, amount: 0, toTs: r.toTs || r.ts, ts: null, hasTime: false, hold: kind === 'HOLD' ? (r.hold || amt) : r.hold,
+      atmId: cleanTag(r.atmId).toUpperCase().replace(/\s/g, ''), atmPlace: cleanTag(r.atmPlace) });
+  });
+}
+/* Layer of action-only rows (hold / ATM / POS / cheque sheets have no layer column): take it from the transfer
+   that credited that account with the same UTR, else the account's own layer in the trail. Marked layerDerived. */
+function ncrpDeriveLayers(rows) {
+  const byUtr = new Map(), byAcct = new Map();
+  for (const r of rows) { if (r.actOnly || r.layer == null) continue; const k = acctKey(r.acctNo);
+    if (r.utr) byUtr.set(k + '|' + normUtr(r.utr), r.layer); if (!byAcct.has(k) || r.layer < byAcct.get(k)) byAcct.set(k, r.layer);
+    if (r.toAcct) { const t = acctKey(r.toAcct); if (!byAcct.has(t) || r.layer + 1 < byAcct.get(t)) byAcct.set(t, r.layer + 1); } }
+  let n = 0;
+  for (const r of rows) { if (!r.actOnly || (r.layer != null && !r.layerDerived)) continue; const k = acctKey(r.acctNo);
+    const l = byUtr.get(k + '|' + normUtr(r.utr)) ?? byAcct.get(k); const nl = l ?? null; if (r.layer !== nl) { r.layer = nl; r.layerDerived = nl != null; n++; } }
+  return n;
 }
 function ncrpAction(s) {
   s = String(s || '').toLowerCase();

@@ -151,6 +151,7 @@ async function commitQueued(q) {
   }
   const rec = { id: impId, file: q.file.name, size: q.file.size, hash: q.hash, kind: q.kind, type: q.type, bank: (q.result[0] || {}).bank || '', at: nowStamp(), by: S.user ? S.user.email : 'local', added, dups, rejects: rejects.slice(0, 500), rejectCount: rejects.length, accts: uniq(accts), reviewed: !!q.reviewed, template: ((q.result[0] || {}).hdr || {}).template || '', balFails: q.kind === 'statement' ? sum(q.result, G => sum((G.res && G.res.groups) || [], g => g.balFails)) : 0, ocrPages: sum(q.result, G => G.g.ocrPages || 0) };
   c.work.imports.push(rec);
+  if (q.kind === 'ncrp') { ncrpDeriveLayers(c.work.ncrp); for (const r of c.work.ncrp) if (r.layerDerived && r.acctNo) { const a = IX.acctByKey.get(acctKey(r.acctNo)); if (a && (a.layerNcrp == null || r.layer < a.layerNcrp)) a.layerNcrp = r.layer; } }
   if (q.kind === 'statement') reorderAll();
   rebuildIndexes(); if (q.kind === 'statement' || q.kind === 'ncrp') markSeedsFromNcrp();
   markDirty(...PARTS.filter(p => p !== 'audit'));
