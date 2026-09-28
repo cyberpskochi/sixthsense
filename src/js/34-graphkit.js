@@ -11,7 +11,7 @@ const GraphKit = {
         <div class="seg">${lay.map(([k, ic, t]) => `<button class="btn-sm ${st.layout === k ? 'on' : ''}" data-lay="${k}" title="${t} layout">${icon(ic)}<span>${t}</span></button>`).join('')}</div>
         <div class="seg"><button class="btn-sm ${st.style === 'cards' || (st.style === 'auto' && ['tree', 'lr'].includes(st.layout)) ? 'on' : ''}" data-sty="cards" title="Show nodes as cards">▭ Cards</button><button class="btn-sm ${st.style === 'dots' || (st.style === 'auto' && !['tree', 'lr'].includes(st.layout)) ? 'on' : ''}" data-sty="dots" title="Show nodes as dots">● Dots</button><button class="btn-sm ${st.labels ? 'on' : ''}" data-lbl="1" title="Amounts on arrows">₹ Amounts</button></div>
         <div class="gk-search"><input id="gkQ" placeholder="Find account / UPI / mobile…" autocomplete="off"><button class="btn-sm" id="gkGo">⌕</button></div>
-        <div class="seg"><button class="btn-sm" id="gkFocus" title="Show only the money path through the selected node">◎ Focus path</button><button class="btn-sm" id="gkCut" title="Hide the selected accounts / transactions (Shift+click to select several)">✂ Cut selected</button><button class="btn-sm" id="gkAll" title="Show everything again">Show all</button></div>
+        <div class="seg"><button class="btn-sm" id="gkFocus" title="Show only the money path through the selected node">◎ Focus path</button><button class="btn-sm" id="gkCut" title="Hide the selected accounts / transactions (Shift+click to select several)">✂ Cut selected</button><button class="btn-sm" id="gkUndo" title="Undo the last hide / cut (Ctrl+Z)" disabled>↶ Undo</button><button class="btn-sm" id="gkAll" title="Show everything again">Show all</button></div>
         <div class="seg"><button class="btn-sm" id="gkIn" title="Zoom in">＋</button><button class="btn-sm" id="gkOut" title="Zoom out">－</button><button class="btn-sm" id="gkFit" title="Fit to screen">⤢ Fit</button><button class="btn-sm" id="gkFull" title="Full screen">⛶</button><button class="btn-sm" id="gkPng" title="Save as picture">⇩ PNG</button></div>
         <div class="gk-stats">${(opt.stats || []).map(s => `<span class="chip ${s.cls || 'on'}">${esc(s.label)}: <b>${s.value}</b></span>`).join('')}</div>
       </div>
@@ -22,13 +22,14 @@ const GraphKit = {
     if (typeof cytoscape === 'undefined') { $('#gkCv', host).innerHTML = emptyState('Graph library not loaded.'); return null; }
     if (!opt.nodes.length) { $('#gkCv', host).innerHTML = emptyState(opt.empty || 'Nothing to draw yet.'); return null; }
     const ids = new Set(opt.nodes.map(n => n.id));
-    const els = opt.nodes.map(n => ({ data: Object.assign({ size: 26, color: '#2f9bff', sub: '', badge: '' }, n, { card: n.card || [n.badge ? '[' + n.badge + ']  ' + n.label : n.label, n.sub || ''].filter(Boolean).join('\n'), ch: n.ch || 54, cw: n.cw || 196 }) }))
+    const els = opt.nodes.map(n => ({ data: Object.assign({ size: 26, color: '#2f9bff', sub: '', badge: '' }, n, { card: n.card || [n.badge ? '[' + n.badge + ']  ' + n.label : n.label, n.sub || ''].filter(Boolean).join('\n'), ch: n.ch || 54, cw: n.cw || 196, svg: GraphKit.cardSvg(n.cardLines || [n.label, n.sub].filter(Boolean), n.badge || '', n.color || '#2f9bff', n.cw || 196, n.ch || 54) }) }))
       .concat(opt.edges.filter(e => ids.has(e.source) && ids.has(e.target) && e.source !== e.target).map((e, i) => ({ data: Object.assign({ id: 'e' + i, color: '#00e5ff', w: 1.6, label: '' }, e) })));
     const cardsOn = () => st.style === 'cards' || (st.style === 'auto' && ['tree', 'lr'].includes(st.layout));
     const cy = cytoscape({ container: $('#gkCv', host), elements: els, minZoom: 0.05, maxZoom: 3,
       style: [
         { selector: 'node', style: { 'background-color': 'data(color)', label: 'data(label)', color: '#dff6ff', 'font-size': 10, 'font-weight': 600, 'text-valign': 'center', 'text-halign': 'right', 'text-margin-x': 6, width: 'data(size)', height: 'data(size)', 'border-width': 2, 'border-color': '#070d1a', 'text-outline-color': '#070d1a', 'text-outline-width': 2 } },
         { selector: 'node.card', style: { shape: 'round-rectangle', width: 'data(cw)', height: 'data(ch)', 'background-color': '#0f1b31', 'border-color': 'data(color)', 'border-width': 2, label: 'data(card)', 'text-wrap': 'wrap', 'text-max-width': 'data(cw)', 'text-halign': 'center', 'text-margin-x': 0, 'font-size': 10.5, 'line-height': 1.35, 'text-outline-width': 0, color: '#e6f4ff' } },
+        { selector: 'node.card[svg]', style: { label: '', 'background-image': 'data(svg)', 'background-fit': 'none', 'background-width': 'data(cw)', 'background-height': 'data(ch)', 'background-clip': 'node', 'background-image-smoothing': 'yes', 'background-image-containment': 'inside' } },
         { selector: 'node[shape]', style: { shape: 'data(shape)' } },
         { selector: 'node.card[shape]', style: { shape: 'round-rectangle' } },
         { selector: 'edge', style: { width: 'data(w)', 'line-color': 'data(color)', 'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.9, 'curve-style': 'bezier', opacity: .85 } },
@@ -61,8 +62,17 @@ const GraphKit = {
     const blinkers = cy.nodes('[blink]'); if (blinkers.length) { let on = false; const t = setInterval(() => { if (!host.isConnected) return clearInterval(t); on = !on; blinkers.toggleClass('blink', on); }, 650); }
     // layer squares: show / hide a whole layer
     const hidden = new Set(); const applyCut = () => { cy.batch(() => { cy.elements().removeClass('cut'); cy.nodes().filter(n => hidden.has(String(n.data('lk'))) || n.data('_cut')).addClass('cut'); cy.edges().filter(e => e.data('_cut') || e.source().hasClass('cut') || e.target().hasClass('cut')).addClass('cut'); }); };
-    $$('.gk-lq', host).forEach(b => b.onclick = () => { const k = b.dataset.lk; if (hidden.has(k)) hidden.delete(k); else hidden.add(k); b.classList.toggle('on', !hidden.has(k)); applyCut(); });
-    $('#gkCut', host).onclick = () => { const sel = cy.$(':selected'); if (!sel.length) return toast('Click an account or an amount box first (Shift+click to select several).', 'warn'); sel.forEach(x => x.data('_cut', 1)); sel.unselect(); applyCut(); toast(sel.length + ' item(s) hidden — “Show all” brings them back', 'ok', 2500); };
+    const hist = []; const undoBtn = $('#gkUndo', host); const syncUndo = () => { undoBtn.disabled = !hist.length; undoBtn.textContent = hist.length ? '↶ Undo (' + hist.length + ')' : '↶ Undo'; };
+    const syncSq = () => $$('.gk-lq', host).forEach(b => b.classList.toggle('on', !hidden.has(b.dataset.lk)));
+    const undo = () => { const h = hist.pop(); if (!h) return toast('Nothing to undo', 'warn', 1500);
+      if (h.t === 'layer') { if (h.was) hidden.add(h.k); else hidden.delete(h.k); } else if (h.t === 'cut') h.ids.forEach(id => { const x = cy.getElementById(id); if (x.length) x.removeData('_cut'); });
+      else if (h.t === 'all') { h.hidden.forEach(k => hidden.add(k)); h.cut.forEach(id => { const x = cy.getElementById(id); if (x.length) x.data('_cut', 1); }); }
+      syncSq(); applyCut(); syncUndo(); toast('Undone', 'ok', 1200); };
+    undoBtn.onclick = undo;
+    const onKey = e => { if (!host.isConnected) return document.removeEventListener('keydown', onKey); if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.target.closest('input,textarea,select') && hist.length) { e.preventDefault(); undo(); } };
+    document.addEventListener('keydown', onKey);
+    $$('.gk-lq', host).forEach(b => b.onclick = () => { const k = b.dataset.lk; hist.push({ t: 'layer', k, was: hidden.has(k) }); if (hidden.has(k)) hidden.delete(k); else hidden.add(k); syncSq(); applyCut(); syncUndo(); });
+    $('#gkCut', host).onclick = () => { const sel = cy.$(':selected'); if (!sel.length) return toast('Click an account or an amount box first (Shift+click to select several).', 'warn'); hist.push({ t: 'cut', ids: sel.map(x => x.id()) }); sel.forEach(x => x.data('_cut', 1)); sel.unselect(); applyCut(); syncUndo(); toast(sel.length + ' item(s) hidden — “Show all” brings them back', 'ok', 2500); };
     $$('[data-lay]', host).forEach(b => b.onclick = () => { st.layout = b.dataset.lay; st.style = 'auto'; $$('[data-lay]', host).forEach(x => x.classList.toggle('on', x === b)); syncSty(); runLayout(); });
     const syncSty = () => { $$('[data-sty]', host).forEach(x => x.classList.toggle('on', (x.dataset.sty === 'cards') === cardsOn())); };
     $$('[data-sty]', host).forEach(b => b.onclick = () => { st.style = b.dataset.sty; syncSty(); runLayout(); });
@@ -76,7 +86,7 @@ const GraphKit = {
     };
     $('#gkGo', host).onclick = find; $('#gkQ', host).onkeydown = e => { if (e.key === 'Enter') find(); };
     $('#gkFocus', host).onclick = () => { const s = cy.$('node:selected'); if (!s.length) return toast('Click a node first, then Focus path.', 'warn'); const keep = s.union(s.predecessors()).union(s.successors()); cy.elements().addClass('dim'); keep.removeClass('dim'); cy.animate({ fit: { eles: keep, padding: 60 } }, { duration: 400 }); };
-    $('#gkAll', host).onclick = () => { cy.elements().forEach(x => x.removeData('_cut')); hidden.clear(); $$('.gk-lq', host).forEach(b => b.classList.add('on')); cy.elements().removeClass('dim hit cut'); cy.fit(undefined, 30); };
+    $('#gkAll', host).onclick = () => { const cutIds = cy.elements().filter(x => x.data('_cut')).map(x => x.id()); if (cutIds.length || hidden.size) { hist.push({ t: 'all', hidden: Array.from(hidden), cut: cutIds }); syncUndo(); } cy.elements().forEach(x => x.removeData('_cut')); hidden.clear(); $$('.gk-lq', host).forEach(b => b.classList.add('on')); cy.elements().removeClass('dim hit cut'); cy.fit(undefined, 30); };
     $('#gkIn', host).onclick = () => cy.zoom({ level: cy.zoom() * 1.25, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
     $('#gkOut', host).onclick = () => cy.zoom({ level: cy.zoom() / 1.25, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
     $('#gkFit', host).onclick = () => cy.fit(undefined, 30);
@@ -96,6 +106,17 @@ const GraphKit = {
     const mx = Math.max(0, ...dep.values());
     cy.nodes().forEach(n => { if (!dep.has(n.id())) { const l = n.data('layer'); dep.set(n.id(), Number.isFinite(l) && l < 50 ? l : mx + 1); } });
     return dep;
+  },
+  // Box drawn as an SVG picture: coloured layer badge in the top-left corner + text lines.
+  cardSvg(lines, badge, color, w, h) {
+    const X = t => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const fit = (t, px, fs) => { t = String(t ?? ''); const max = Math.max(4, Math.floor(px / (fs * 0.56))); return t.length > max ? t.slice(0, max - 1) + '…' : t; };
+    const bw = badge ? Math.max(24, Math.round(String(badge).length * 7 + 12)) : 0; const F = "font-family='Segoe UI,Arial,Helvetica,sans-serif'";
+    let out = `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'><rect x='0' y='0' width='${w}' height='${h}' rx='6' fill='${X(color)}' fill-opacity='0.13'/>`;
+    if (badge) out += `<rect x='5' y='5' width='${bw}' height='16' rx='3' fill='${X(color)}'/><text x='${5 + bw / 2}' y='16.8' text-anchor='middle' ${F} font-size='10' font-weight='800' fill='#06101f'>${X(badge)}</text>`;
+    const [t0, ...rest] = lines; out += `<text x='${badge ? bw + 11 : 8}' y='17.5' ${F} font-size='11.5' font-weight='700' fill='#ffffff'>${X(fit(t0, w - (badge ? bw + 16 : 14), 11.5))}</text>`;
+    rest.forEach((t, i) => { out += `<text x='8' y='${34 + i * 13.5}' ${F} font-size='10' fill='${i === rest.length - 1 && rest.length > 2 ? X(color) : '#cfe3f5'}' ${i === rest.length - 1 && rest.length > 2 ? "font-weight='700'" : ''}>${X(fit(t, w - 14, 10))}</text>`; });
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(out + '</svg>');
   },
   /* Strict layer layout: one column (Tree →) or one row (Tree ↓) per level — a level is never wrapped
      or mixed with another level. Level = data('lv') (falls back to data('layer')). */

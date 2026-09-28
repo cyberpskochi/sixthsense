@@ -78,14 +78,7 @@ VIEWS.geo = async el => {
     $('#gTiles', body).onchange = async e => { S.prefs.mapTiles = e.target.checked; await savePrefs(); go('geo'); };
     if (typeof L === 'undefined') { $('#gMap', body).innerHTML = emptyState('Map library not loaded.'); return; }
     if (GEO_MAP) { try { GEO_MAP.remove(); } catch {} GEO_MAP = null; }
-    const map = GEO_MAP = L.map($('#gMap', body), { zoomControl: true, attributionControl: true, preferCanvas: true }).setView([22.5, 80], 5);
-    if (tilesOn) L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap contributors' }).addTo(map);
-    else { // offline orientation grid (latitude / longitude every 2°) with a few reference cities
-      for (let la = 6; la <= 38; la += 2) L.polyline([[la, 66], [la, 98]], { color: '#1d3a5c', weight: 1, interactive: false }).addTo(map);
-      for (let lo = 66; lo <= 98; lo += 2) L.polyline([[6, lo], [38, lo]], { color: '#1d3a5c', weight: 1, interactive: false }).addTo(map);
-      for (const [n, la, lo] of [['Delhi', 28.61, 77.21], ['Mumbai', 19.08, 72.88], ['Kolkata', 22.57, 88.36], ['Chennai', 13.08, 80.27], ['Bengaluru', 12.97, 77.59], ['Hyderabad', 17.39, 78.49], ['Kochi', 9.93, 76.27], ['Patna', 25.59, 85.14], ['Jaipur', 26.91, 75.79], ['Lucknow', 26.85, 80.95], ['Ranchi', 23.34, 85.31], ['Guwahati', 26.14, 91.74], ['Ahmedabad', 23.02, 72.57]])
-        L.circleMarker([la, lo], { radius: 3, color: '#5f7599', fillColor: '#5f7599', fillOpacity: 1, weight: 1, interactive: false }).addTo(map).bindTooltip(n, { permanent: true, direction: 'right', className: 'geo-city', offset: [4, 0] });
-    }
+    const map = GEO_MAP = geoBaseMap($('#gMap', body), tilesOn);
     const mx = Math.max(1, ...pts.map(p => p.amount)); const b = [];
     for (const p of pts) {
       const r = 6 + 16 * Math.sqrt(p.amount / mx); const ll = [p.info.lat, p.info.lon]; b.push(ll);
@@ -96,3 +89,36 @@ VIEWS.geo = async el => {
     setTimeout(() => map.invalidateSize(), 150);
   }
 };
+
+/* Shared India base map: OpenStreetMap tiles when the officer allows it, otherwise an offline lat/long grid with reference cities. */
+function geoBaseMap(host, tilesOn) {
+  const map = L.map(host, { zoomControl: true, attributionControl: true, preferCanvas: true }).setView([22.5, 80], 5);
+  if (tilesOn) L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap contributors' }).addTo(map);
+  else {
+    for (let la = 6; la <= 38; la += 2) L.polyline([[la, 66], [la, 98]], { color: '#1d3a5c', weight: 1, interactive: false }).addTo(map);
+    for (let lo = 66; lo <= 98; lo += 2) L.polyline([[6, lo], [38, lo]], { color: '#1d3a5c', weight: 1, interactive: false }).addTo(map);
+    for (const [n, la, lo] of [['Delhi', 28.61, 77.21], ['Mumbai', 19.08, 72.88], ['Kolkata', 22.57, 88.36], ['Chennai', 13.08, 80.27], ['Bengaluru', 12.97, 77.59], ['Hyderabad', 17.39, 78.49], ['Kochi', 9.93, 76.27], ['Patna', 25.59, 85.14], ['Jaipur', 26.91, 75.79], ['Lucknow', 26.85, 80.95], ['Ranchi', 23.34, 85.31], ['Guwahati', 26.14, 91.74], ['Ahmedabad', 23.02, 72.57]])
+      L.circleMarker([la, lo], { radius: 3, color: '#5f7599', fillColor: '#5f7599', fillOpacity: 1, weight: 1, interactive: false }).addTo(map).bindTooltip(n, { permanent: true, direction: 'right', className: 'geo-city', offset: [4, 0] });
+  }
+  return map;
+}
+const kmBetween = (a, b) => { const R = 6371, r = x => x * Math.PI / 180; const dLa = r(b.lat - a.lat), dLo = r(b.lon - a.lon); const h = Math.sin(dLa / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
+/* NCRP trail accounts placed by the IFSC of their branch (PIN / district centroid — approximate). */
+function ncrpGeoPoints(m) {
+  const out = [];
+  for (const n of m.N.values()) { if (n.exit || n.unknown || !n.ifsc) continue; const g = GEO.loc(n.ifsc); if (!g) continue; out.push({ n, lat: g.lat, lon: g.lon, acc: g.acc, info: n.info || GEO.info(n.ifsc) }); }
+  return out;
+}
+/* Groups of 2+ trail accounts (Layer 1 and deeper) whose branches are within `km` of each other (single-link). */
+function ncrpGeoClusters(m, km = 10) {
+  // wallets / PG / collection accounts are central, not local — left out of the 10 km grouping
+  const PG = /razorpay|paytm|phonepe|amazon|cashfree|payu|billdesk|wallet|payments?\s*services|^others?$/i;
+  const pts = ncrpGeoPoints(m).filter(p => (p.n.layer ?? 1) >= 1 && /^\d+$/.test(p.n.id) && !PG.test(p.n.bank || '')); const par = pts.map((_, i) => i); const f = i => par[i] === i ? i : (par[i] = f(par[i]));
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) if (kmBetween(pts[i], pts[j]) <= km) par[f(i)] = f(j);
+  const g = groupBy(pts.map((p, i) => [f(i), p]), x => x[0]); const out = [];
+  for (const arr of g.values()) { if (arr.length < 2) continue; const ps = arr.map(x => x[1]); const lat = sum(ps, p => p.lat) / ps.length, lon = sum(ps, p => p.lon) / ps.length;
+    const place = uniq(ps.map(p => p.info && (p.info.city || p.info.district)).filter(Boolean)).slice(0, 3).join(' / ') || uniq(ps.map(p => p.info && p.info.state).filter(Boolean)).join(', ');
+    let maxKm = 0; for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) maxKm = Math.max(maxKm, kmBetween(ps[i], ps[j]));
+    out.push({ pts: ps, lat, lon, place, state: uniq(ps.map(p => p.info && p.info.state).filter(Boolean)).join(', '), layers: uniq(ps.map(p => p.n.layer)).sort((a, b) => a - b), amt: sum(ps, p => p.n.in), hold: sum(ps, p => p.n.hold), maxKm: round2(maxKm) }); }
+  return out.sort((a, b) => b.pts.length - a.pts.length || b.amt - a.amt);
+}

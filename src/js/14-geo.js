@@ -48,6 +48,16 @@ const IFSCDB = {
         S.derived = null; if (S.cur) { try { S.cur.intel = null; } catch { } }
       } catch (e) { this.err = e.message; this.loading = null; console.warn('IFSC DB', e); } })(); return this.loading; },
   bankName(p) { return this.doc ? this.doc.banks[p] || '' : ''; },
+  /* Approximate branch position: PIN-code centroid from the address, else district centroid. Returns {lat, lon, acc} or null. */
+  geo(inf) {
+    if (!inf) return null; if (inf.lat != null && inf.lon != null && inf.lat !== '' && isFinite(+inf.lat)) return { lat: +inf.lat, lon: +inf.lon, acc: 'exact' };
+    const d = this.doc; if (!d || !d.pins) return null;
+    const pin = inf.pincode || (String(inf.address || '').match(/\b(\d{3})\s?(\d{3})\b(?!.*\b\d{6}\b)/) || []).slice(1).join('');
+    if (pin && d.pins[pin]) return { lat: d.pins[pin][0], lon: d.pins[pin][1], acc: 'PIN ' + pin };
+    if (!this._dn) { this._dn = new Map(); (d.dist || []).forEach((n, i) => { if (d.dll && d.dll[i]) this._dn.set(String(n).toLowerCase().trim(), d.dll[i]); }); }
+    for (const k of [inf.district, inf.city]) { const v = k && this._dn.get(String(k).toLowerCase().trim()); if (v) return { lat: v[0], lon: v[1], acc: 'district ' + k }; }
+    return null;
+  },
   get(code) { if (!this.idx) return null; const i = this.idx.get(code); if (i == null) return null; const r = this.doc.rows[i]; const d = this.doc;
     const pin = (String(r[2]).match(/\b(\d{3})\s?(\d{3})\b(?!.*\b\d{6}\b)/) || []).slice(1).join('');
     return { ifsc: r[0], bank: d.banks[r[0].slice(0, 4)] || '', branch: r[1], address: r[2], city: r[3] >= 0 ? d.city[r[3]] : '', district: r[4] >= 0 ? d.dist[r[4]] : '', state: r[5] >= 0 ? d.state[r[5]] : (pin ? pinState(pin) : ''), micr: r[6], contact: r[7], pincode: pin, src: 'db' }; },
@@ -96,6 +106,7 @@ const GEO = {
     const p = code.slice(0, 4); const name = IFSC_PREFIX[p] || IFSCDB.bankName(p) || (bankByIfsc(code) || {}).name || '';
     return { ifsc: code, bank: name, branch: '', district: '', state: '', partial: true, invalid: !!(hit && hit.invalid) || !IFSC_RX.test(code) };
   },
+  loc(code) { return IFSCDB.geo(this.info(code)); },
   atmInfo(id) { id = String(id || '').toUpperCase().replace(/\s/g, ''); if (!id) return null; const t = this.term.get(id); return this.atm.get(id) || (t ? this.atm.get(t) : null) || (S.cur && S.cur.work.atmInfo && S.cur.work.atmInfo[id]) || null; },
   /* Online lookup: sends ONLY the 11-character IFSC code to the public RBI-sourced IFSC API. */
   async lookupOnline(codes, onProgress) {

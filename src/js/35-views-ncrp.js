@@ -8,8 +8,13 @@
    Each Layer-N row is linked to the Layer-(N-1) row whose "Money Transfer to" account is this account: exact UTR first,
    then equal amount, then nearest time. Anything that cannot be linked is shown in "Report check", never hidden.  */
 const NCRPF = { ack: '', maxL: 0, bank: '', min: 0, cash: 1, tab: 'trail', tl: 0 };
-const ACT_NAME = { TRANSFER: 'Money transfer', ATM: 'ATM withdrawal', CHEQUE: 'Cheque withdrawal', AEPS: 'AEPS withdrawal', POS: 'POS / purchase', HOLD: 'Put on hold', CASH: 'Cash withdrawal', OTHER: 'Other' };
-const CASH_ACTS = ['ATM', 'CHEQUE', 'AEPS', 'POS', 'CASH'];
+const ACT_NAME = { TRANSFER: 'Money transfer', ATM: 'ATM withdrawal', CHEQUE: 'Cheque withdrawal', AEPS: 'AEPS withdrawal', POS: 'POS / purchase', UPI: 'UPI / wallet / merchant payment', DEBIT: 'Debit (beneficiary not reported)', HOLD: 'Put on hold', CASH: 'Cash withdrawal', OTHER: 'Other' };
+const CASH_ACTS = ['ATM', 'CHEQUE', 'AEPS', 'POS', 'CASH', 'UPI', 'DEBIT'];
+const EXIT_BADGE = { ATM: 'ATM', CHEQUE: 'CHQ', AEPS: 'AEPS', POS: 'POS', CASH: 'CASH', UPI: 'UPI', DEBIT: 'DR' };
+/* Transfer mode from the UTR / remarks (indicative): RTGS / NEFT UTRs carry R / N as the 5th character; 12-digit RRNs are IMPS or UPI. */
+function txnMode(utr, remarks, bank) { const u = String(utr || '').toUpperCase(), t = (remarks || '') + ' ' + (bank || '');
+  if (/\bUPI\b|phonepe|paytm|google\s*pay|gpay|bhim|amazon\s*pay|mobikwik|freecharge|cred\b|razorpay|cashfree|payu/i.test(t)) return 'UPI / wallet';
+  if (/RTGS/i.test(t) || /^[A-Z]{4}R\d/.test(u)) return 'RTGS'; if (/NEFT/i.test(t) || /^[A-Z]{4}N\d/.test(u)) return 'NEFT'; if (/IMPS/i.test(t)) return 'IMPS'; if (/^\d{12}$/.test(u)) return 'IMPS / UPI'; if (/^[A-Z]{4}H\d/.test(u)) return 'NEFT'; return ''; }
 const ncrpBranch = ifsc => { const i = ifsc ? GEO.info(ifsc) : null; return i ? [i.branch, i.city || i.district, i.state].filter(Boolean).filter((v, k, a) => a.indexOf(v) === k).join(', ') : ''; };
 const ncrpDT = (ts, hasTime) => ts ? fmtDT(ts, hasTime) : '';
 
@@ -31,7 +36,7 @@ function ncrpModel(f = NCRPF) {
   const addHop = (from, to, o) => {
     const k = o.utr ? from + '>' + to + '>' + o.utr : null; let h = k ? hopByKey.get(k) : null;
     if (h) { for (const r of o.rows || []) if (!h.rows.includes(r)) h.rows.push(r); if (!h.ts && o.ts) { h.ts = o.ts; h.hasTime = !!o.hasTime; } if (!h.amount && o.amount) h.amount = o.amount; return h; }
-    h = { id: 'H' + H.length, from, to, utr: o.utr || '', amount: round2(o.amount || 0), disputed: o.disputed || 0, ts: o.ts || null, hasTime: !!o.hasTime, layer: o.layer, kind: o.kind || 'money', action: o.action || '', basis: o.basis || '', rows: (o.rows || []).slice(), ifsc: o.ifsc || '' };
+    h = { id: 'H' + H.length, from, to, utr: o.utr || '', amount: round2(o.amount || 0), disputed: o.disputed || 0, ts: o.ts || null, hasTime: !!o.hasTime, layer: o.layer, kind: o.kind || 'money', action: o.action || '', basis: o.basis || '', rows: (o.rows || []).slice(), ifsc: o.ifsc || '' }; h.mode = txnMode(h.utr, (h.rows[0] || {}).remarks, (h.rows[0] || {}).merchant || (h.rows[0] || {}).toBank);
     H.push(h); if (k) hopByKey.set(k, h); return h;
   };
   const amtOf = r => r.amount || r.disputed || 0;
@@ -46,8 +51,8 @@ function ncrpModel(f = NCRPF) {
     if (K(r.toAcct)) { node(K(r.toAcct), L + 1, { ifsc: r.toIfsc, bank: r.toBank }); pending.push({ r, from: K(r.acctNo), to: K(r.toAcct), L, hop: null }); }
     if (CASH_ACTS.includes(r.action)) {
       n.cash += actAmt; if (r.action === 'ATM') n.atms.push(r);
-      if (f.cash) { const xid = 'X:' + r.action + ':' + (r.atmId || K(r.acctNo)) + ':L' + L; let x = N.get(xid);
-        if (!x) { x = { id: xid, layer: L, exit: r.action, label: r.action === 'ATM' ? 'ATM ' + (r.atmId || '') : ACT_NAME[r.action], place: r.atmPlace || r.merchant || '', in: 0, rows: [], act: {}, atms: [], hin: [], hout: [] }; N.set(xid, x); }
+      if (f.cash) { const xid = 'X:' + r.action + ':' + (r.atmId || K(r.acctNo) + (r.merchant ? ':' + r.merchant : '')) + ':L' + L; let x = N.get(xid);
+        if (!x) { x = { id: xid, layer: L, exit: r.action, label: r.action === 'ATM' ? 'ATM ' + (r.atmId || '') : ['UPI', 'POS', 'DEBIT'].includes(r.action) && r.merchant ? r.merchant : ACT_NAME[r.action], place: r.atmPlace || (r.merchant && !['UPI', 'DEBIT'].includes(r.action) ? r.merchant : '') || (r.action === 'UPI' ? 'UPI / wallet payment' : r.action === 'DEBIT' ? 'Beneficiary not reported by bank' : ''), in: 0, rows: [], act: {}, atms: [], hin: [], hout: [] }; N.set(xid, x); }
         x.rows.push(r); addHop(K(r.acctNo), xid, { utr: r.toUtr || '', amount: actAmt, ts: r.toTs || r.ts, hasTime: r.toTs ? true : r.hasTime, layer: L, kind: 'cash', action: r.action, rows: [r], basis: r.toTs || r.toAmount ? 'Action columns of the NCRP row' : 'Layer ' + L + ' row' }); }
     }
   }
@@ -114,9 +119,9 @@ function ncrpModel(f = NCRPF) {
   return { rows, N, E, H, fraud: round2(fraud), disputedN: seenL1.size, victimId, issues, roots: Array.from(N.values()).filter(n => n.layer === 0).map(n => n.id) };
 }
 
-const NLAYER_COL = ['#00ff9d', '#ffb300', '#00e5ff', '#b388ff', '#2f9bff', '#ff5aa5', '#9ccc65', '#ffd54f'];
-const nlc = l => NLAYER_COL[Math.min(Math.max(0, l ?? 7), 7)];
-const NEXIT_COL = { ATM: '#ff3b30', CHEQUE: '#e040fb', AEPS: '#76ff03', POS: '#ffd180', CASH: '#ff3b30' };
+const NLAYER_COL = ['#00e676', '#ffb300', '#00e5ff', '#b388ff', '#4d7cff', '#ff4fa3', '#c6ff00', '#ffffff', '#26c6da', '#ff8a65'];
+const nlc = l => NLAYER_COL[Math.max(0, l ?? 9) % NLAYER_COL.length];
+const NEXIT_COL = { ATM: '#ff3b30', CHEQUE: '#e040fb', AEPS: '#ff9100', POS: '#ffd180', CASH: '#ff3b30', UPI: '#18ffff', DEBIT: '#b0bec5' };
 function ncrpLayers(m) { const by = new Map(); for (const n of m.N.values()) { if (n.exit || n.unknown || n.layer === 0 || n.layer == null) continue; if (!by.has(n.layer)) by.set(n.layer, []); by.get(n.layer).push(n); } return by; }
 function ncrpFlowStrip(m) {
   const by = ncrpLayers(m); const ls = Array.from(by.keys()).sort((a, b) => a - b); const iss = m.issues.orphan.length + m.issues.assumed.length;
@@ -153,7 +158,7 @@ VIEWS.ncrp = async el => {
       ${kpi('Onward transfers', nfmt(transfers.length), inrShort(sum(transfers, h => h.amount)) + ' moved to next layers', 'rgba(0,229,255,.3)')}
       ${kpi('Accounts / wallets', nfmt(accts.length), `${banks.length} banks · ${maxL} layer(s)`, 'rgba(179,136,255,.35)')}
       ${kpi('ATM withdrawals', inrShort(actSum('ATM')), nfmt(m.H.filter(h => h.action === 'ATM').length) + ' withdrawals', 'rgba(255,110,64,.35)')}
-      ${kpi('Cheque / AEPS / POS', inrShort(actSum('CHEQUE') + actSum('AEPS') + actSum('POS')), `Cheque ${inrShort(actSum('CHEQUE'))} · AEPS ${inrShort(actSum('AEPS'))} · POS ${inrShort(actSum('POS'))}`, 'rgba(0,255,157,.3)')}
+      ${kpi('Cheque / POS / UPI', inrShort(actSum('CHEQUE') + actSum('AEPS') + actSum('POS') + actSum('UPI') + actSum('DEBIT')), `Cheque ${inrShort(actSum('CHEQUE'))} · POS ${inrShort(actSum('POS'))} · UPI/wallet ${inrShort(actSum('UPI'))}${actSum('AEPS') ? ' · AEPS ' + inrShort(actSum('AEPS')) : ''}${actSum('DEBIT') ? ' · other debits ' + inrShort(actSum('DEBIT')) : ''}`, 'rgba(0,255,157,.3)')}
     </div>
     ${ncrpFlowStrip(m)}
     <div class="card" style="margin-bottom:14px"><div class="row" style="align-items:flex-end;flex-wrap:wrap">
@@ -165,7 +170,7 @@ VIEWS.ncrp = async el => {
       <span class="small dim">States: ${esc(states.join(', ') || '—')}</span>
     </div></div>
     <div id="nGraph" style="margin-bottom:14px"></div>
-    <div class="card"><div class="tabs" id="nTabs">${[['trail', 'Money trail (hop by hop)'], ['layers', 'Layer summary'], ['banks', 'Bank summary'], ['check', 'Report check' + (issuesN ? ' ⚠' : '')], ['rows', 'NCRP rows']].map(([k, t]) => `<button data-t="${k}" class="${NCRPF.tab === k ? 'on' : ''}">${esc(t)}</button>`).join('')}</div><div id="nTab"></div></div>`;
+    <div class="card"><div class="tabs" id="nTabs">${[['trail', 'Money trail (hop by hop)'], ['map', 'Map (by IFSC)'], ['layers', 'Layer summary'], ['banks', 'Bank summary'], ['check', 'Report check' + (issuesN ? ' ⚠' : '')], ['rows', 'NCRP rows']].map(([k, t]) => `<button data-t="${k}" class="${NCRPF.tab === k ? 'on' : ''}">${esc(t)}</button>`).join('')}</div><div id="nTab"></div></div>`;
   $('#nImp', el).onclick = () => go('up_ncrp');
   $('#fAck', el).onchange = e => { NCRPF.ack = e.target.value; go('ncrp'); };
   $('#fL', el).onchange = e => { NCRPF.maxL = +e.target.value; go('ncrp'); };
@@ -182,21 +187,21 @@ VIEWS.ncrp = async el => {
     all.filter(n => n.bank === NCRPF.bank).forEach(n => { up(n.id); down(n.id); }); show = show.filter(n => keep.has(n.id)); }
   const cut = (s, k) => { s = String(s || ''); return s.length > k ? s.slice(0, k - 1) + '…' : s; };
   const nodes = show.map(n => {
-    if (n.exit) { const h0 = n.rows[0] || {}; const when = n.rows.length === 1 ? ncrpDT(h0.toTs || h0.ts, h0.toTs ? true : h0.hasTime) : n.rows.length + ' withdrawals';
-      return { id: n.id, label: n.label, lv: n.layer == null ? 99.5 : n.layer + 0.5, card: [`${n.exit === 'ATM' ? '🏧' : '💵'} ${n.label}`, cut(n.place, 34) || ACT_NAME[n.exit], `${inr(n.in)} · ${when}`].join('\n'), ch: 66, cw: 240,
-        sub: [n.place, inrShort(n.in)].filter(Boolean).join(' | '), badge: n.exit === 'ATM' ? 'ATM' : n.exit === 'CHEQUE' ? 'CHQ' : n.exit, color: NEXIT_COL[n.exit] || '#ff6e40', blink: ['ATM', 'CHEQUE', 'CASH'].includes(n.exit) ? (NEXIT_COL[n.exit] || '#ff3b30') : undefined, lk: 'X' + n.exit, layer: n.layer, size: 20, shape: 'round-rectangle', tip: `<b>${esc(n.label)}</b><br>${esc(n.place || '')}<br>${inr(n.in)} · ${n.rows.length} txn` }; }
-    if (n.unknown) return { id: n.id, label: 'Sender not in report', lv: n.layer, layer: n.layer, lk: 'L' + n.layer, color: '#8a94a6', card: `⚠ Sender not in report\nLayer ${n.layer} row missing\nsee Report check`, ch: 66, cw: 240, size: 20, tip: 'The report has Layer ' + (n.layer + 1) + ' rows whose sender is not listed at Layer ' + n.layer };
+    if (n.exit) { const h0 = n.rows[0] || {}; const when = n.rows.length === 1 ? ncrpDT(h0.toTs || h0.ts, h0.toTs ? true : h0.hasTime) : n.rows.length + (n.exit === 'ATM' ? ' withdrawals' : ' transactions');
+      return { id: n.id, label: n.label, lv: n.layer == null ? 99.5 : n.layer + 0.5, cardLines: [n.label, n.place || ACT_NAME[n.exit], `${inr(n.in)} · ${when}`], ch: 66, cw: 240,
+        sub: [n.place, inrShort(n.in)].filter(Boolean).join(' | '), badge: EXIT_BADGE[n.exit] || n.exit, color: NEXIT_COL[n.exit] || '#ff6e40', blink: ['ATM', 'CHEQUE', 'CASH'].includes(n.exit) ? (NEXIT_COL[n.exit] || '#ff3b30') : undefined, lk: 'X' + n.exit, layer: n.layer, size: 20, shape: 'round-rectangle', tip: `<b>${esc(n.label)}</b><br>${esc(n.place || '')}<br>${inr(n.in)} · ${n.rows.length} txn` }; }
+    if (n.unknown) return { id: n.id, label: 'Sender not in report', lv: n.layer, layer: n.layer, lk: 'L' + n.layer, color: '#8a94a6', badge: '?', cardLines: ['Sender not in report', `Layer ${n.layer} row missing`, 'see Report check'], ch: 66, cw: 240, size: 20, tip: 'The report has Layer ' + (n.layer + 1) + ' rows whose sender is not listed at Layer ' + n.layer };
     const isV = n.layer === 0; const br = n.info && (n.info.branch || n.info.city) ? cut([n.info.branch, n.info.state].filter(Boolean).join(', '), 38) : (n.ifsc ? 'Branch: IFSC not in database' : '');
     const h1 = n.hin[0]; const inLine = isV ? `Sent ${inr(n.out)} · ${n.hout.length} txn` : h1 ? `${ncrpDT(h1.ts, h1.hasTime) || 'date not in report'} · UTR ${cut(h1.utr || 'n/a', 16)}${n.hin.length > 1 ? ' (+' + (n.hin.length - 1) + ')' : ''}` : 'no credit row';
     const tail = isV ? '' : `In ${inr(n.in)}${n.hold ? ' · HOLD ' + inrShort(n.hold) : ''}${n.cash ? ' · cash ' + inrShort(n.cash) : ''}`;
     return { id: n.id, label: n.id === 'VICTIM' ? 'Victim account(s)' : n.id, lv: n.layer ?? 99, w8: n.in,
-      card: [`${isV ? 'COMPLAINANT' : n.layer == null ? 'NOT LINKED' : 'L' + n.layer}  ${n.id === 'VICTIM' ? 'Victim account(s)' : n.id}`, cut([n.bank || 'Bank n/a', n.ifsc].filter(Boolean).join(' · '), 40), br, inLine, tail].filter(Boolean).join('\n'), ch: isV ? 62 : 96, cw: 240,
-      sub: [n.bank || 'N/A', n.ifsc || 'N/A'].join(' | '), badge: isV ? 'V-AC' : 'L' + (n.layer ?? '?'), layer: n.layer, lk: 'L' + (n.layer ?? 'null'), color: n.layer == null ? '#8a94a6' : nlc(n.layer), hold: n.hold > 0 ? 1 : undefined, size: 22 + Math.min(24, Math.sqrt((n.in || 0) / 2500)), search: [n.holder, n.bank, n.ifsc, ...n.hin.map(h => h.utr)].join(' '),
+      cardLines: [n.id === 'VICTIM' ? 'Victim account(s)' : n.id, [n.bank || 'Bank n/a', n.ifsc].filter(Boolean).join(' · '), br, inLine, tail].filter(Boolean), ch: isV ? 62 : 96, cw: 240,
+      sub: [n.bank || 'N/A', n.ifsc || 'N/A'].join(' | '), badge: isV ? 'V-AC' : n.layer == null ? 'NL' : 'L' + n.layer, layer: n.layer, lk: 'L' + (n.layer ?? 'null'), color: n.layer == null ? '#8a94a6' : nlc(n.layer), hold: n.hold > 0 ? 1 : undefined, size: 22 + Math.min(24, Math.sqrt((n.in || 0) / 2500)), search: [n.holder, n.bank, n.ifsc, ...n.hin.map(h => h.utr)].join(' '),
       tip: `<b>${esc(n.id)}</b>${n.holder ? '<br>' + esc(n.holder) : ''}<br>${esc(n.bank || '')} ${esc(n.ifsc || '')}${br ? '<br>' + esc(br) : ''}<br>Layer ${n.layer ?? '?'} · in ${inr(n.in)}${n.hold ? '<br><b>On hold ' + inr(n.hold) + '</b>' : ''}<br><i>Click for all transactions</i>` };
   });
   const EL = Array.from(m.E.values()).filter(e => e.amount >= (NCRPF.min || 0));
   const edges = EL.map((e, i) => { const h = e.hops[0] || {}; const when = h.ts ? fmtDate(h.ts) + (h.hasTime ? ' ' + fmtTime(h.ts).slice(0, 5) : '') : '';
-    return { id: 'ne' + i, ei: i, source: e.source, target: e.target, label: '₹' + nfmt(Math.round(e.amount)) + (e.n > 1 ? ' ×' + e.n : '') + (when ? '\n' + when : ''), w: 1.2 + Math.min(6, Math.max(0, Math.log10(e.amount + 1) - 2.5)), color: e.kind === 'cash' ? (NEXIT_COL[(m.N.get(e.target) || {}).exit] || '#ff6e40') : nlc((m.N.get(e.target) || {}).layer), dash: e.kind === 'cash' ? 1 : undefined }; });
+    return { id: 'ne' + i, ei: i, source: e.source, target: e.target, label: '₹' + nfmt(Math.round(e.amount)) + (e.n > 1 ? ' ×' + e.n : '') + (h.mode && e.n === 1 ? ' · ' + h.mode : '') + (when ? '\n' + when : ''), w: 1.2 + Math.min(6, Math.max(0, Math.log10(e.amount + 1) - 2.5)), color: e.kind === 'cash' ? (NEXIT_COL[(m.N.get(e.target) || {}).exit] || '#ff6e40') : nlc((m.N.get(e.target) || {}).layer), dash: e.kind === 'cash' ? 1 : undefined }; });
   const lays = uniq(show.filter(n => !n.exit && n.layer != null).map(n => n.layer)).sort((a, b) => a - b); const exits = uniq(show.filter(n => n.exit).map(n => n.exit));
   const titles = {}; lays.forEach(l => { const ns = show.filter(n => !n.exit && (n.layer ?? 0) === l && !n.unknown); titles[l] = { label: l === 0 ? 'COMPLAINANT' : `LAYER ${l}  ·  ${ns.length} a/c  ·  ${inrShort(sum(ns, n => n.in))}`, color: nlc(l), lk: 'L' + l }; });
   uniq(show.filter(n => n.exit).map(n => n.layer == null ? 99.5 : n.layer + 0.5)).forEach(v => { titles[v] = { label: v > 99 ? 'CASH-OUT · NOT LINKED' : 'CASH-OUT  ·  L' + Math.floor(v), color: '#ff6e40' }; });
@@ -211,6 +216,7 @@ VIEWS.ncrp = async el => {
     { label: 'Layer', get: h => h.kind === 'cash' ? 'L' + h.layer + ' cash-out' : h.layer === 1 ? 'L1 (disputed)' : 'L' + h.layer },
     { label: 'Date & time', html: h => h.ts ? esc(fmtDT(h.ts, h.hasTime)) + (h.hasTime ? '' : ' <span class="dim small">(time n/a)</span>') : '<span class="dim">not in report</span>', x: h => h.ts ? fmtDT(h.ts, h.hasTime) : '' },
     { label: 'UTR / Txn ID', html: h => h.utr ? `<span class="mono">${esc(h.utr)}</span>` : '<span class="dim">—</span>', x: h => h.utr },
+    { label: 'Mode', get: h => h.mode || '' },
     { label: 'From account', html: h => { const s = m.N.get(h.from) || {}; return `<span class="mono">${esc(s.unknown ? 'Not in report' : s.id === 'VICTIM' ? 'Complainant' : h.from)}</span><div class="small dim">${esc(s.bank || '')}</div>`; }, x: h => h.from },
     { label: 'To account', html: h => { const t = m.N.get(h.to) || {}; return t.exit ? `<b>${esc(t.label)}</b><div class="small dim">${esc(t.place || '')}</div>` : `<span class="mono">${esc(h.to)}</span><div class="small dim">${esc(t.bank || '')}${t.ifsc ? ' · ' + esc(t.ifsc) : ''}</div>`; }, x: h => h.to },
     { label: 'Branch / location', get: h => { const t = m.N.get(h.to) || {}; return t.exit ? (t.place || '') : ncrpBranch(t.ifsc); } },
@@ -226,6 +232,27 @@ VIEWS.ncrp = async el => {
       const draw = () => { const q = ($('#nTq', host).value || '').toUpperCase().replace(/\s/g, ''); const rs = !q ? hs : hs.filter(h => { const t = m.N.get(h.to) || {}, s = m.N.get(h.from) || {}; return (h.from + h.to + h.utr + (t.bank || '') + (s.bank || '') + (t.ifsc || '') + ncrpBranch(t.ifsc)).toUpperCase().replace(/\s/g, '').includes(q); });
         $('#nTt', host).innerHTML = simpleTable(hopCols, rs, { maxH: 520, click: 1, empty: 'No hops for this filter.' }); bindRows($('#nTt', host), rs, h => { const e = m.E.get(h.from + '>' + h.to); if (e) ncrpEdgeModal(m, e, h); }); };
       $$('[data-tl]', host).forEach(b => b.onclick = () => { NCRPF.tl = +b.dataset.tl; drawTab(); }); $('#nTq', host).oninput = draw; draw();
+    } else if (NCRPF.tab === 'map') {
+      const pts = ncrpGeoPoints(m); const cl = ncrpGeoClusters(m); const noLoc = all.filter(n => !n.exit && !n.unknown && n.id !== 'VICTIM' && !pts.some(p => p.n === n));
+      const tilesOn = !!S.prefs.mapTiles;
+      host.innerHTML = `<div class="row sb" style="flex-wrap:wrap;gap:8px;margin-bottom:8px"><div class="legend">${uniq(pts.map(p => p.n.layer)).sort((a, b) => a - b).map(l => `<span><i style="background:${nlc(l)}"></i>${l === 0 ? 'Complainant' : 'Layer ' + l}</span>`).join('')}<span><i style="background:none;border:2px dashed #ff6e40"></i>2+ accounts within 10 km</span></div>
+        <label class="row small"><input type="checkbox" id="ncTiles" ${tilesOn ? 'checked' : ''}> Street map (OpenStreetMap tiles — only the map area is requested, no case data)</label></div>
+        <div id="ncMap" class="geo-map"></div>
+        <div class="small dim" style="margin-top:6px">${pts.length} account(s) placed by the IFSC of their branch — position is approximate (branch PIN-code or district centre), not the account holder’s address.${noLoc.length ? ` ${noLoc.length} account(s) without a usable IFSC / location are not on the map.` : ''}</div>
+        <h4 style="margin-top:14px">Accounts within 10 km of each other ${cl.length ? badge(cl.length + ' lead(s)', 'amber') : ''}</h4>
+        ${simpleTable([{ label: 'Area', html: g => `<b>${esc(g.place || '—')}</b><div class="small dim">${esc(g.state)}</div>` , x: g => g.place }, { label: 'Accounts', html: g => g.pts.map(p => `<span class="mono">${esc(p.n.id)}</span> <span class="small" style="color:${nlc(p.n.layer)}">L${p.n.layer}</span> <span class="small dim">${esc(p.n.bank || '')}</span>`).join('<br>'), x: g => g.pts.map(p => p.n.id + ' (L' + p.n.layer + ')').join(', ') }, { label: 'Layers', get: g => g.layers.map(l => 'L' + l).join(', ') }, { label: 'Spread', get: g => g.maxKm + ' km' }, { label: 'Received', html: g => inr(g.amt), num: 1 }, { label: 'On hold', html: g => g.hold ? inr(g.hold) : '', num: 1 }], cl, { maxH: 320, empty: 'No two trail accounts have branches within 10 km of each other.' })}`;
+      $('#ncTiles', host).onchange = async e => { S.prefs.mapTiles = e.target.checked; await savePrefs(); drawTab(); };
+      if (typeof L === 'undefined') { $('#ncMap', host).innerHTML = emptyState('Map library not loaded.'); return; }
+      if (window.NC_MAP) { try { NC_MAP.remove(); } catch { } } const map = window.NC_MAP = geoBaseMap($('#ncMap', host), tilesOn); const b = [];
+      const mx = Math.max(1, ...pts.map(p => p.n.in || 0));
+      for (const g of cl) L.circle([g.lat, g.lon], { radius: Math.max(10000, g.maxKm * 500 + 6000), color: '#ff6e40', weight: 2, dashArray: '6 6', fill: true, fillOpacity: 0.06 }).addTo(map).bindTooltip(`${g.pts.length} accounts within 10 km · ${esc(g.place)}`);
+      const jit = new Map();
+      for (const p of pts) { const k = p.lat.toFixed(3) + ',' + p.lon.toFixed(3); const j = jit.get(k) || 0; jit.set(k, j + 1); const ll = [p.lat + (j ? 0.004 * Math.cos(j * 2.4) * Math.ceil(j / 6) : 0), p.lon + (j ? 0.004 * Math.sin(j * 2.4) * Math.ceil(j / 6) : 0)]; b.push(ll);
+        const col = nlc(p.n.layer); const inf = p.info || {};
+        L.circleMarker(ll, { radius: 6 + 10 * Math.sqrt((p.n.in || 0) / mx), color: p.n.hold ? '#00ff9d' : '#0b1220', weight: p.n.hold ? 3 : 1.5, fillColor: col, fillOpacity: .85 }).addTo(map)
+          .bindTooltip(`${p.n.layer === 0 ? 'V-AC' : 'L' + p.n.layer} · ${esc(p.n.id)}`)
+          .bindPopup(`<b>${p.n.layer === 0 ? 'Complainant' : 'Layer ' + p.n.layer}</b> · <span class="mono">${esc(p.n.id)}</span><br>${esc(p.n.bank || '')} · ${esc(p.n.ifsc)}<br>${esc([inf.branch, inf.address].filter(Boolean).join(', '))}<br>${esc([inf.city, inf.district, inf.state].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', '))}<br>Received <b>${esc(inr(p.n.in))}</b>${p.n.hold ? ' · on hold ' + esc(inr(p.n.hold)) : ''}<br><span class="small">Location: ${esc(p.acc)} (approximate)</span><br><a target="_blank" rel="noopener noreferrer" href="${gmapsUrl([inf.bank || p.n.bank, inf.branch, inf.address].filter(Boolean).join(' '))}">Branch on Google Maps</a>`); }
+      if (b.length) map.fitBounds(b, { padding: [30, 30], maxZoom: 11 }); setTimeout(() => map.invalidateSize(), 150);
     } else if (NCRPF.tab === 'layers') {
       host.innerHTML = simpleTable([{ label: 'Layer', k: 'l' }, { label: 'Accounts', k: 'n', num: 1 }, { label: 'Banks', k: 'b' }, { label: 'Received', html: r => inr(r.in), num: 1 }, { label: 'Moved onward', html: r => inr(r.out), num: 1 }, { label: 'On hold', html: r => inr(r.hold), num: 1 }, { label: 'Cash-out', html: r => inr(r.cash), num: 1 }, { label: 'First credit', get: r => r.first }],
         layersSorted.map(l => { const ns = byLayer.get(l); const f0 = ns.flatMap(n => n.hin).filter(h => h.ts).sort((a, b) => a.ts - b.ts)[0]; return { l: 'Layer ' + l, n: ns.length, b: uniq(ns.map(n => n.bank).filter(Boolean)).join(', '), in: sum(ns, x => x.in), out: sum(ns, x => x.out), hold: sum(ns, x => x.hold), cash: sum(ns, x => x.cash), first: f0 ? fmtDT(f0.ts, f0.hasTime) : '' }; }), { maxH: 400 });
@@ -289,7 +316,7 @@ function ncrpEdgeModal(m, e, only) {
   const nm = t => t.exit ? t.label : t.unknown ? 'Sender not in report' : t.id === 'VICTIM' ? 'Complainant' : t.id;
   const hops = only ? [only] : e.hops;
   const tile = (t, head) => `<div class="card nc-tile" style="--lc:${t.exit ? NEXIT_COL[t.exit] || '#ff6e40' : nlc(t.layer)}"><div class="small dim">${head}</div><div class="mono" style="font-size:15px">${esc(nm(t))}</div><div class="small">${esc(t.exit ? t.place || '' : [t.bank, t.ifsc].filter(Boolean).join(' · '))}</div>${!t.exit && ncrpBranch(t.ifsc) ? `<div class="small dim">${esc(ncrpBranch(t.ifsc))}</div>` : ''}${!t.exit && t.layer != null ? `<div class="small">${t.layer === 0 ? 'Complainant' : 'Layer ' + t.layer}</div>` : ''}</div>`;
-  const hopCard = h => `<div class="nc-hop"><div class="nc-hk"><span>Date & time</span><b>${esc(h.ts ? fmtDT(h.ts, h.hasTime) : 'Not in report')}</b>${h.ts && !h.hasTime ? '<i class="small dim">time unavailable in source report</i>' : ''}</div><div class="nc-hk"><span>UTR / Transaction ID</span><b class="mono">${esc(h.utr || '—')}</b></div><div class="nc-hk"><span>Amount</span><b>${esc(inr(h.amount))}</b></div><div class="nc-hk"><span>Action</span><b>${esc(h.kind === 'cash' ? ACT_NAME[h.action] || 'Cash-out' : h.layer === 1 && h.action === 'CREDIT' ? 'Disputed transaction' : 'Money transfer')}</b></div><div class="nc-hk"><span>Link basis</span><b class="small">${esc(h.basis)}</b></div>${h.rows[0] && h.rows[0].atmId ? `<div class="nc-hk"><span>ATM</span><b>${esc(h.rows[0].atmId)} ${esc(h.rows[0].atmPlace || '')}</b></div>` : ''}${h.rows[0] && h.rows[0].chequeNo ? `<div class="nc-hk"><span>Cheque no.</span><b>${esc(h.rows[0].chequeNo)}</b></div>` : ''}</div>`;
+  const hopCard = h => `<div class="nc-hop"><div class="nc-hk"><span>Date & time</span><b>${esc(h.ts ? fmtDT(h.ts, h.hasTime) : 'Not in report')}</b>${h.ts && !h.hasTime ? '<i class="small dim">time unavailable in source report</i>' : ''}</div><div class="nc-hk"><span>UTR / Transaction ID</span><b class="mono">${esc(h.utr || '—')}</b></div><div class="nc-hk"><span>Amount</span><b>${esc(inr(h.amount))}</b></div>${h.mode ? `<div class="nc-hk"><span>Mode (from UTR)</span><b>${esc(h.mode)}</b></div>` : ''}${h.rows[0] && h.rows[0].remarks ? `<div class="nc-hk" style="grid-column:1/-1"><span>Remarks by bank</span><b class="small">${esc(h.rows[0].remarks)}</b></div>` : ''}<div class="nc-hk"><span>Action</span><b>${esc(h.kind === 'cash' ? ACT_NAME[h.action] || 'Cash-out' : h.layer === 1 && h.action === 'CREDIT' ? 'Disputed transaction' : 'Money transfer')}</b></div><div class="nc-hk"><span>Link basis</span><b class="small">${esc(h.basis)}</b></div>${h.rows[0] && h.rows[0].atmId ? `<div class="nc-hk"><span>ATM</span><b>${esc(h.rows[0].atmId)} ${esc(h.rows[0].atmPlace || '')}</b></div>` : ''}${h.rows[0] && h.rows[0].chequeNo ? `<div class="nc-hk"><span>Cheque no.</span><b>${esc(h.rows[0].chequeNo)}</b></div>` : ''}</div>`;
   const rowCols = [{ label: 'Ack No.', k: 'ackNo' }, { label: 'Layer', k: 'layer' }, { label: 'Account / wallet', k: 'acctNo' }, { label: 'UTR', k: 'utr' }, { label: 'Date & time', get: r => ncrpDT(r.ts, r.hasTime) }, { label: 'Amount', html: r => inr(r.amount || r.disputed), num: 1 }, { label: 'Action taken by bank', get: r => r.status || ACT_NAME[r.action] || '' }, { label: 'To account', k: 'toAcct' }, { label: 'IFSC', get: r => r.toIfsc || r.ifsc }, { label: 'Source row', get: r => r.src ? (r.src.file || '') + ' r' + (r.src.row || '') : '' }];
   const rows = uniq(hops.flatMap(h => h.rows));
   const body = `<div class="nc-pair">${tile(src, 'FROM')}<div class="nc-mid">→<div>${esc(inr(sum(hops, h => h.amount)))}</div><div class="small dim">${hops.length} transaction${hops.length > 1 ? 's' : ''}</div></div>${tile(dst, 'TO')}</div>

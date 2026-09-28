@@ -221,7 +221,9 @@ function ncrpTrailRows(rows, grid, map) {
   return rows.map(r => {
     const base = { fmt: 'trail', sheetKind: kind, actBank: r.status };
     if (kind === 'TRANSFER') {
-      if (!r.toAcct) return Object.assign(r, base, { actOnly: true, action: 'OTHER', status: 'Money Transfer to (no beneficiary)' });
+      if (!r.toAcct) { // bank reported the debit but no separate beneficiary account (UPI app / wallet / PG / merchant, or not given)
+        const app = r.toBank || r.bank; const upi = /\bUPI\b|phonepe|paytm|google\s*pay|gpay|bhim|amazon|mobikwik|freecharge|cred\b|razorpay|cashfree|payu|billdesk|wallet|merchant/i.test(app + ' ' + r.remarks + ' ' + r.toIfsc + ' ' + r.ifsc);
+        return Object.assign(r, base, { actOnly: true, action: upi ? 'UPI' : 'DEBIT', status: upi ? 'UPI / wallet / merchant payment' : 'Debit — beneficiary not reported', merchant: app, toUtr: r.toUtr || '', toAmount: r.toAmount || r.amount, amount: 0, toTs: r.toTs || r.ts, ts: null, hasTime: false, toIfsc: r.toIfsc || r.ifsc, utr: r.utr }); }
       return Object.assign(r, base, { fromAcct: r.acctNo, acctNo: r.toAcct, toAcct: '', ifsc: r.toIfsc || r.ifsc, toIfsc: '', bank: r.toBank || r.bank, toBank: '',
         parentUtr: r.utr, utr: r.toUtr || r.utr, toUtr: '', amount: r.toAmount || r.amount, toAmount: 0, ts: r.toTs || r.ts, hasTime: r.toTs ? true : r.hasTime, toTs: null,
         status: 'Money Transfer to', action: '' });

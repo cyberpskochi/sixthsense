@@ -58,7 +58,7 @@ VIEWS.up_ncrp = el => {
   const m = ncrpModel(Object.assign({}, NCRPF, { cash: 1, ack: '' })); const fr = ncrpFraudRows(); const comp = ncrpComplainants();
   const byL = ncrpLayers(m); const ls = Array.from(byL.keys()).sort((a, b) => a - b); const l1 = byL.get(1) || [];
   const banksL1 = uniq(l1.map(n => n.bank).filter(Boolean)); const stAll = uniq(Array.from(m.N.values()).filter(n => !n.exit && n.layer > 0).map(n => n.info && n.info.state).filter(Boolean));
-  const acts = ['ATM', 'CHEQUE', 'AEPS', 'POS', 'CASH'].map(k => { const hs = m.H.filter(h => h.kind === 'cash' && h.action === k); return { k, n: hs.length, amt: round2(sum(hs, h => h.amount)) }; });
+  const acts = ['ATM', 'CHEQUE', 'AEPS', 'POS', 'UPI', 'DEBIT', 'CASH'].map(k => { const hs = m.H.filter(h => h.kind === 'cash' && h.action === k); return { k, n: hs.length, amt: round2(sum(hs, h => h.amount)) }; });
   const holdAmt = round2(sum(Array.from(m.N.values()).filter(n => !n.exit), n => n.hold || 0)); const cashAmt = round2(sum(acts, a => a.amt));
   if (holdAmt) acts.push({ k: 'HOLD', n: Array.from(m.N.values()).filter(n => n.hold > 0).length, amt: holdAmt });
   const acks = uniq(c.work.ncrp.map(r => r.ackNo).filter(Boolean)); const imps = c.work.imports.filter(x => x.kind === 'ncrp');
