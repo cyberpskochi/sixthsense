@@ -10,7 +10,8 @@ VIEWS.geo = async el => {
   const atmLocated = atms.filter(a => a.info).length;
   el.innerHTML = pageHead('IFSC & ATM Map', 'Where the money went: branch, district and state for every IFSC in the case, and the location of every ATM used for cash-out.',
     `<button id="gLook" class="btn-p" ${unresolved ? '' : 'disabled'}>${unresolved ? `⌕ Look up ${unresolved} IFSC online` : '✓ All IFSC resolved'}</button><button id="gAtm">⇪ Import ATM database</button><button id="gIfsc">⇪ Import IFSC master</button>`) +
-    `<div class="grid g6" style="margin-bottom:14px">
+    `<div class="notice" style="margin-bottom:12px">🏦 Offline IFSC branch database: <b>${esc(IFSCDB.stats().text)}</b> — branch, address, district and state are looked up on this device; nothing is sent online. Codes not in it can be looked up online or added from an IFSC master file.</div>
+    <div class="grid g6" style="margin-bottom:14px">
       ${kpi('States', nfmt(states.size), 'from resolved IFSC', 'rgba(0,229,255,.3)')}${kpi('Districts', nfmt(districts.size), '', 'rgba(179,136,255,.35)')}
       ${kpi('Unique IFSC', nfmt(ifs.length), unresolved ? unresolved + ' not yet looked up' : 'all resolved', 'rgba(41,121,255,.35)')}
       ${kpi('Banks', nfmt(uniq(ifs.map(r => (r.info || {}).bank).filter(Boolean)).length), '', 'rgba(255,179,0,.35)')}

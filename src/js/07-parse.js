@@ -155,7 +155,32 @@ function detectHeader(rows, kind, bankCode) {
       if (bb.score > best.score + .5) best = { row: r, score: bb.score, map: bb.map, rows: 2 };
     }
   }
+  if (kind === 'ncrp' && best.row >= 0) ncrpRefineMap(best.rows === 2 ? rows[best.row].map((v, i) => cellText(v) + ' ' + cellText((rows[best.row + 1] || [])[i])) : rows[best.row], best.map);
   return best;
+}
+/* NCRP / I4C reports repeat some headings: the first "Transaction Id / UTR", "Transaction Amount", "Bank" belong to the
+   transaction that brought money INTO the layer account; the later ones (after "Action Taken") describe the bank's action
+   — e.g. the onward "Money Transfer to" transaction. Map the repeats to toUtr / toAmount / toBank / toDate. */
+function ncrpRefineMap(cells, map) {
+  const keys = cells.map(c => normKey(cellText(c))); const used = new Set(Object.values(map)); const dict = FIELDS.ncrp.f;
+  if (map.acctNo === undefined) { const i = keys.findIndex((k, j) => !used.has(j) && /(wallet|pgpa)/.test(k) && /(acc|id)/.test(k) && !/bank/.test(k.slice(0, 4))); if (i >= 0) { if (map.toAcct === i) delete map.toAcct; map.acctNo = i; used.add(i); } }
+  const like = (f, k) => dict[f].includes(k) || dict[f].some(w => w.length > 5 && (k.startsWith(w) || k.endsWith(w)));
+  for (const [f, t] of [['utr', 'toUtr'], ['amount', 'toAmount'], ['bank', 'toBank'], ['date', 'toDate']]) {
+    if (map[f] === undefined || map[t] !== undefined) continue;
+    const idx = keys.map((k, i) => (i === map[f] || !used.has(i)) && k && like(f, k) && !/disput|hold/.test(k) ? i : -1).filter(i => i >= 0);
+    if (idx.length < 2) continue;
+    const first = Math.min(...idx); const rest = idx.filter(i => i !== first && (f !== 'utr' || /utr|transactionid|txnid|rrn/.test(keys[i])));
+    const second = rest.find(i => keys[i] === keys[first]) ?? rest[0]; if (second === undefined) continue;
+    map[f] = first; map[t] = second; used.add(first); used.add(second);
+  }
+  // Report with a separate onward UTR: a single amount / date column sitting in the action block (after the
+  // beneficiary account / action columns) describes the onward transaction, not the credit into the layer account.
+  if (map.toUtr !== undefined) {
+    const gs = Math.min(...[map.toAcct, map.status, map.toBank].filter(v => v !== undefined && v > (map.acctNo ?? -1)), map.toUtr);
+    for (const [f, t] of [['amount', 'toAmount'], ['date', 'toDate']]) if (map[t] === undefined && map[f] !== undefined && map[f] > gs) { map[t] = map[f]; delete map[f]; }
+  }
+  // the beneficiary account of the action must come after the layer account
+  if (map.acctNo !== undefined && map.toAcct !== undefined && map.toAcct < map.acctNo) { const j = keys.findIndex((k, i) => i > map.acctNo && !used.has(i) && dict.toAcct.includes(k)); if (j >= 0) { map.toAcct = j; } }
 }
 function mappingValid(kind, map) {
   const req = FIELDS[kind].required;

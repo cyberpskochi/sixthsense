@@ -164,7 +164,7 @@ function letterGroups(type) {
       if (prev) { if (!prev.ref && row.ref) prev.ref = row.ref; if (!prev.atmId && row.atmId) prev.atmId = row.atmId; if ((!prev.place || prev.place === '—') && row.place) prev.place = row.place; continue; }
       if (fx(row)) { seenA.set(dk, row); put((a.info || {}).bank || (acc || {}).bank || 'Bank (ATM owner)', row); } }
   } else if (type === 'cheque') {
-    for (const r of c.work.ncrp.filter(r => r.action === 'CHEQUE')) { const acc = IX.acctByKey.get(acctKey(r.acctNo)); if (!inLayer(acc)) continue; const row = { key: 'NCHQ:' + r.id, ts: r.ts, hasTime: r.hasTime, chequeNo: r.chequeNo || chqNo(r.remarks), amount: r.amount || r.disputed, acct: r.acctNo, ifsc: r.ifsc || (acc || {}).ifsc || '', remarks: r.remarks || r.status };
+    for (const r of c.work.ncrp.filter(r => r.action === 'CHEQUE')) { const acc = IX.acctByKey.get(acctKey(r.acctNo)); if (!inLayer(acc)) continue; const row = { key: 'NCHQ:' + r.id, ts: r.toTs || r.ts, hasTime: r.toTs ? true : r.hasTime, chequeNo: r.chequeNo || chqNo(r.remarks), amount: r.toAmount || r.amount || r.disputed, acct: r.acctNo, ifsc: r.ifsc || (acc || {}).ifsc || '', remarks: r.remarks || r.status };
       if (fx(row)) put(r.bank || (acc || {}).bank || 'Bank', row); }
     for (const t of c.txns) { if (!(t.dr > 0)) continue; if (!(t.channel === 'CHEQUE' || /\bCHQ\b|CHEQUE|\bCLG\b|CLEARING|CASH\s*WDL.*CHQ|SELF\s*CHQ|TO\s+SELF/i.test(t.narr || ''))) continue; const acc = IX.acctById.get(t.acctId); if (!acc || !inLayer(acc) || acctType(acc) === 'Complainant' || acctType(acc) === 'Other') continue;
       const row = { key: 'TCHQ:' + t.id, ts: t.ts, hasTime: t.hasTime, chequeNo: chqNo(t.narr) || t.ref || '', amount: t.dr, acct: acc.acctNo, ifsc: acc.ifsc, remarks: t.narr };

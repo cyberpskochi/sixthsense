@@ -38,6 +38,21 @@ async function refKeyChecked(keyB64) {
     if (fp !== REF_KEY_FP) throw new Error(`Key mismatch: REF_KEY in Apps Script (fingerprint ${fp}) is not the key this version of the app needs (fingerprint ${REF_KEY_FP}). Paste the key from the latest NEW_REF_KEY file into Apps Script → Script properties → REF_KEY and save, then sign out and sign in again. If you just uploaded to GitHub, wait for the green ✓ and press Ctrl + Shift + R.`); }
   return key;
 }
+/* Built-in IFSC branch database (public Razorpay IFSC data, ~1.24 lakh branches) — data/ifsc-db.bin, loaded in the
+   background after sign-in and cached by the browser. Lookups work offline once loaded. */
+const IFSCDB = {
+  doc: null, idx: null, loading: null, err: '',
+  load() { if (this.doc || this.loading) return this.loading; this.loading = (async () => {
+      try { const r = await fetch(CONFIG.IFSC_DB_URL, { cache: 'default', credentials: 'omit' }); if (!r.ok) throw new Error('IFSC database not found on the site (' + r.status + ')');
+        const d = JSON.parse(await gunzip(new Uint8Array(await r.arrayBuffer()))); const idx = new Map(); d.rows.forEach((row, i) => idx.set(row[0], i)); this.doc = d; this.idx = idx; this.err = '';
+        S.derived = null; if (S.cur) { try { S.cur.intel = null; } catch { } }
+      } catch (e) { this.err = e.message; this.loading = null; console.warn('IFSC DB', e); } })(); return this.loading; },
+  bankName(p) { return this.doc ? this.doc.banks[p] || '' : ''; },
+  get(code) { if (!this.idx) return null; const i = this.idx.get(code); if (i == null) return null; const r = this.doc.rows[i]; const d = this.doc;
+    const pin = (String(r[2]).match(/\b(\d{3})\s?(\d{3})\b(?!.*\b\d{6}\b)/) || []).slice(1).join('');
+    return { ifsc: r[0], bank: d.banks[r[0].slice(0, 4)] || '', branch: r[1], address: r[2], city: r[3] >= 0 ? d.city[r[3]] : '', district: r[4] >= 0 ? d.dist[r[4]] : '', state: r[5] >= 0 ? d.state[r[5]] : (pin ? pinState(pin) : ''), micr: r[6], contact: r[7], pincode: pin, src: 'db' }; },
+  stats() { const d = this.doc; if (!d) return { rows: 0, banks: 0, created: '', text: this.err ? 'not loaded (' + this.err + ')' : this.loading ? 'loading…' : 'not loaded' }; const o = { rows: d.rows.length, banks: Object.keys(d.banks).length, created: d.created }; o.text = nfmt(o.rows) + ' branches · ' + nfmt(o.banks) + ' banks' + (o.created ? ' · built ' + o.created : ''); return o; }
+};
 const GEO = {
   ifsc: new Map(), atm: new Map(), term: new Map(), ps: [], loaded: false, _t: null, online: false,
   ATM_COLS: ['atmId', 'term', 'cbs', 'bank', 'address', 'city', 'district', 'state', 'pincode', 'lat', 'lon'],
@@ -77,7 +92,8 @@ const GEO = {
   info(code) {
     code = String(code || '').toUpperCase().replace(/\s/g, ''); if (!code) return null;
     const hit = this.ifsc.get(code) || (S.cur && S.cur.work.ifscInfo && S.cur.work.ifscInfo[code]); if (hit && !hit.invalid) return hit;
-    const p = code.slice(0, 4); const name = IFSC_PREFIX[p] || (bankByIfsc(code) || {}).name || '';
+    const db = IFSCDB.get(code); if (db) return db;
+    const p = code.slice(0, 4); const name = IFSC_PREFIX[p] || IFSCDB.bankName(p) || (bankByIfsc(code) || {}).name || '';
     return { ifsc: code, bank: name, branch: '', district: '', state: '', partial: true, invalid: !!(hit && hit.invalid) || !IFSC_RX.test(code) };
   },
   atmInfo(id) { id = String(id || '').toUpperCase().replace(/\s/g, ''); if (!id) return null; const t = this.term.get(id); return this.atm.get(id) || (t ? this.atm.get(t) : null) || (S.cur && S.cur.work.atmInfo && S.cur.work.atmInfo[id]) || null; },
@@ -128,7 +144,7 @@ function caseIfscRows() {
 function caseAtmRows() {
   const c = S.cur; const m = new Map();
   const add = (id, o) => { const key = id || ('PLACE:' + (o.place || 'Unknown')); let r = m.get(key); if (!r) { r = { atmId: id, place: o.place || '', amount: 0, n: 0, accts: new Set(), first: null, last: null, src: new Set(), txns: [] }; m.set(key, r); } r.amount += o.amount || 0; r.n++; if (o.acct) r.accts.add(o.acct); if (o.ts) { r.first = r.first == null ? o.ts : Math.min(r.first, o.ts); r.last = r.last == null ? o.ts : Math.max(r.last, o.ts); } if (!r.place && o.place) r.place = o.place; r.src.add(o.srcK); if (r.txns.length < 200) r.txns.push(o); };
-  for (const r of c.work.ncrp) if (r.action === 'ATM' || r.atmId) add(r.atmId, { place: r.atmPlace, amount: r.amount || r.disputed, acct: r.acctNo, ts: r.ts, srcK: 'NCRP', layer: r.layer, utr: r.utr });
+  for (const r of c.work.ncrp) if (r.action === 'ATM' || r.atmId) add(r.atmId, { place: r.atmPlace, amount: r.toAmount || r.amount || r.disputed, acct: r.acctNo, ts: r.toTs || r.ts, srcK: 'NCRP', layer: r.layer, utr: r.utr });
   for (const t of c.txns) if (t.dr > 0 && t.channel === 'ATM') { const a = IX.acctById.get(t.acctId); const id = extractAtmId(t.narr); add(id, { place: '', amount: t.dr, acct: a ? a.acctNo : '', ts: t.ts, srcK: 'Statement', layer: acctLayer(t.acctId), narr: t.narr, tx: t.id }); }
   return Array.from(m.values()).map(r => { const info = r.atmId ? GEO.atmInfo(r.atmId) : null; return Object.assign(r, { info, accts: Array.from(r.accts), src: Array.from(r.src), amount: round2(r.amount) }); }).sort((a, b) => b.amount - a.amount);
 }

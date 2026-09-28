@@ -27,6 +27,7 @@ async function parseQueued(q) {
       const sig = hdr.row >= 0 ? headerSignature(g.rows, hdr.row, hdr.rows) : '';
       const tpl = sig && findTemplate(q.kind, sig, bank);
       if (tpl) hdr = { row: hdr.row, rows: tpl.rows, map: Object.assign({}, tpl.map), score: 99, template: tpl.name };
+      if (tpl && q.kind === 'ncrp' && hdr.row >= 0) ncrpRefineMap(g.rows[hdr.row] || [], hdr.map);
       const pre = preText(g, hdr.row);
       const meta = q.kind === 'statement' ? extractStmtMeta(pre + '\n' + (g.pre || ''), q.file.name) : {};
       const bankCode = bank || (meta.bank) || (tpl && tpl.bank) || 'GENERIC';

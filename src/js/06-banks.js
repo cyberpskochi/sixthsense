@@ -122,7 +122,7 @@ const FIELDS = {
     f: {
       ackNo: ['acknowledgementno', 'acknowledgmentno', 'ackno', 'complaintno'], layer: ['layer', 'layerno', 'level'],
       fromAcct: ['fromaccount', 'debitaccount', 'remitteraccount', 'victimaccount', 'senderaccount', 'accountnofrom', 'victimaccountno'],
-      acctNo: ['accountnowalletpgpaid', 'accountnowalletpgpa', 'accountidwalletid', 'accountnowalletid', 'accountwalletpgpaid', 'layeraccount', 'suspectaccount'],
+      acctNo: ['accountnowalletpgpaid', 'accountnowalletpgpa', 'accountnumberwalletpgpaid', 'accountnowalletpgid', 'accountnumberwalletid', 'walletpgpaid', 'accountwalletid', 'fraudsteraccount', 'accusedaccount', 'accountidwalletid', 'accountnowalletid', 'accountwalletpgpaid', 'layeraccount', 'suspectaccount'],
       toAcct: ['accountno', 'accountnumber', 'beneficiaryaccount', 'toaccount', 'creditaccount', 'acno', 'accountno.', 'beneficiaryaccountno'],
       bank: ['bankfis', 'bankfi', 'bank', 'bankname', 'bankfipayment', 'bankwalletpgpa', 'bankwalletpgpaname'], ifsc: ['ifsccode', 'ifsc'],
       utr: ['transactionidutrnumber', 'utr', 'utrno', 'transactionid', 'referenceno', 'rrn', 'transactionidutr', 'txnid'],
@@ -132,7 +132,8 @@ const FIELDS = {
       status: ['actiontakenbybank', 'actiontaken', 'status', 'action'], remarks: ['remarks', 'remark'],
       atmId: ['atmid', 'atmidno', 'atmterminalid', 'atmcode'], atmPlace: ['placelocationofatm', 'locationofatm', 'atmlocation', 'placeofatm', 'atmaddress'],
       chequeNo: ['chequeno', 'chequenumber'], mid: ['mid', 'merchantid'], tid: ['tid', 'terminalid'], merchant: ['merchantname', 'merchant'],
-      actionDate: ['dateofaction', 'actiondate']
+      actionDate: ['dateofaction', 'actiondate'],
+      toUtr: ['onwardutr', 'beneficiaryutr', 'actionutr'], toAmount: ['onwardamount', 'transferredamount', 'actionamount'], toBank: ['beneficiarybank', 'tobank'], toDate: ['onwarddate', 'transferdate']
     }
   },
   atm: {

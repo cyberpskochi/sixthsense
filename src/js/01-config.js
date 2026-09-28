@@ -13,6 +13,7 @@ const CONFIG = {
   BACKEND_URL: '__BACKEND_URL__',
   REF_ATM_URL: 'data/atm-ref.enc',
   REF_NODAL_URL: 'data/nodal-ref.enc',
+  IFSC_DB_URL: 'data/ifsc-db.bin',
   // Local (no-Google) mode is disabled in production builds; Google sign-in is mandatory.
   ALLOW_LOCAL_MODE: false,
   // Access gate. Leave both empty to allow any Google account (not recommended).

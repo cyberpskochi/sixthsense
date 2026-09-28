@@ -190,6 +190,7 @@ function normNcrp(grid, hdr, opts) {
       ifsc: map.acctNo !== undefined && toAcct ? '' : ifsc, toIfsc: map.acctNo !== undefined && toAcct ? ifsc : '',
       utr, amount: parseAmount(get('amount')).v || 0, disputed: parseAmount(get('disputed')).v || 0, hold: parseAmount(get('hold')).v || 0, ts: d ? d.ts : null, hasTime: d ? d.hasTime : false,
       status, action: ncrpAction(status + ' ' + cellText(get('remarks'))), remarks: cellText(get('remarks')), atmId: cellText(get('atmId')).toUpperCase().replace(/\s/g, ''), atmPlace: cellText(get('atmPlace')),
+      toBank: cellText(get('toBank')), toUtr: cellText(get('toUtr')).replace(/\s/g, '').toUpperCase(), toAmount: parseAmount(get('toAmount')).v || 0, toTs: (parseDateTime(get('toDate')) || {}).ts || null,
       chequeNo: cellText(get('chequeNo')), mid: cellText(get('mid')), tid: cellText(get('tid')), merchant: cellText(get('merchant')), actionDate: cellText(get('actionDate')),
       src: { file: opts.fileName, sheet: grid.sheet, row: (grid.rowRef[r] || {}).row } });
   }

@@ -23,6 +23,7 @@ function mkChart(canvas, cfg) {
 
 function isAdmin() { return !!(S.user && S.user.role === 'admin'); }
 function renderShell() {
+  setTimeout(() => IFSCDB.load(), 1500); // built-in IFSC branch database, in the background
   const app = $('#app'); app.hidden = false; $('#boot').hidden = true; NetFx.intensity = .55;
   const c = S.cur;
   app.innerHTML = `
