@@ -25,7 +25,7 @@ async function readGrids(file, onProg) {
     const best = cand.map(d => [d, score(d)]).sort((a, b) => b[1] - a[1])[0];
     // fixed-width bank reports (.rpt / .prn): split on runs of 2+ spaces
     const rows = best[1] >= 2 ? lines.map(l => splitDelim(l, best[0])) : lines.map(l => l.trim().split(/\s{2,}/).map(x => x.trim()));
-    return { hash, type: best[1] >= 2 ? 'TEXT' : 'REPORT', grids: [{ sheet: 'text', rows, rowRef: rows.map((_, i) => ({ row: i + 1 })) }] };
+    return { hash, type: best[1] >= 2 ? 'TEXT' : 'REPORT', grids: [{ sheet: 'text', rows, rowRef: rows.map((_, i) => ({ row: i + 1 })), rawLines: text.split(/\r?\n/).slice(0, 80) }] };
   }
   const wb = XLSX.read(buf, { type: 'array', cellDates: false, cellNF: true, raw: /\.csv$/.test(name), dense: true });
   return { hash, grids: wbGrids(wb), type: /\.csv$/.test(name) ? 'CSV' : 'EXCEL' };

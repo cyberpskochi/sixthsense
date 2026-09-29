@@ -14,11 +14,18 @@
  *   ADMIN_EMAIL  = the main admin's Gmail (cannot be blocked or deleted)
  *   REF_KEY      = (optional) key that unlocks the encrypted ATM reference file for approved users
  *
+ * File-problem samples: approved users can send a MASKED sample of a statement / CDR that the app
+ * could not read (header row + a few rows, account numbers / names / phone numbers already replaced
+ * in the browser, and previewed by the officer before sending). Samples are saved as JSON files in the
+ * admin's Drive folder "SIXTH SENSE — File samples" and listed in the "Samples" sheet.
+ *
  * Deploy → New deployment → Web app → Execute as: Me · Who has access: Anyone
  */
 var SHEET_NAME = 'SIXTH SENSE — Users & Logs';
 var USER_COLS = ['email', 'name', 'role', 'status', 'addedAt', 'addedBy', 'lastLogin', 'lastIP', 'note'];
 var LOG_COLS = ['ts', 'email', 'name', 'action', 'detail', 'ip'];
+var SAMPLE_COLS = ['id', 'ts', 'email', 'name', 'kind', 'bank', 'fileType', 'problem', 'note', 'size', 'fileId'];
+var SAMPLE_FOLDER = 'SIXTH SENSE — File samples';
 
 function doGet() { return out_({ ok: true, app: 'SIXTH SENSE access backend', time: new Date().toISOString() }); }
 
@@ -52,6 +59,18 @@ function doPost(e) {
       if (!k) return out_({ ok: false, error: 'ATM reference key not set on the access server (Script property REF_KEY)' });
       log_(who.email, me.name, 'REF DATA KEY', 'Encrypted ATM reference data unlocked', ip);
       return out_({ ok: true, key: k });
+    }
+
+    if (a === 'reportSample') {
+      var body = String(req.sample || '');
+      if (!body || body.length > 400000) return out_({ ok: false, error: 'Sample missing or too large (max 400 KB)' });
+      var sm; try { sm = JSON.parse(body); } catch (e2) { return out_({ ok: false, error: 'Sample is not valid JSON' }); }
+      if (!sm || sm.masked !== true) return out_({ ok: false, error: 'Only masked samples are accepted' });
+      var id = 'S' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyyMMdd-HHmmss') + '-' + Math.floor(Math.random() * 1e4);
+      var f = folder_().createFile(id + '.json', body, 'application/json');
+      withLock_(function () { book_().getSheetByName('Samples').appendRow([id, now_(), who.email, safe_(me.name || ''), safe_(clip_(sm.kind, 30)), safe_(clip_(sm.bank, 60)), safe_(clip_(sm.fileType, 20)), safe_(clip_((sm.problems || []).join('; '), 300)), safe_(clip_(sm.note, 500)), body.length, f.getId()]); });
+      log_(who.email, me.name, 'FILE SAMPLE SENT', id + ' · ' + clip_(sm.kind, 30) + ' · ' + clip_(sm.bank, 60), ip);
+      return out_({ ok: true, id: id });
     }
 
     if (a === 'log') {
@@ -97,6 +116,17 @@ function doPost(e) {
       return out_({ ok: true, users: readUsers_() });
     }
 
+    if (a === 'listSamples') {
+      var sh = book_().getSheetByName('Samples'); var v = sh.getDataRange().getValues(); var list = [];
+      for (var i = v.length - 1; i >= 1 && list.length < 500; i--) { var o = {}; SAMPLE_COLS.forEach(function (k, j) { o[k] = v[i][j] instanceof Date ? v[i][j].toISOString() : String(v[i][j] == null ? '' : v[i][j]); }); list.push(o); }
+      return out_({ ok: true, samples: list });
+    }
+    if (a === 'getSample') {
+      var sh2 = book_().getSheetByName('Samples'); var v2 = sh2.getDataRange().getValues();
+      for (var r = 1; r < v2.length; r++) if (String(v2[r][0]) === String(req.id)) return out_({ ok: true, sample: DriveApp.getFileById(String(v2[r][10])).getBlob().getDataAsString() });
+      return out_({ ok: false, error: 'Sample not found' });
+    }
+
     if (a === 'getLogs') {
       var lim = Math.min(Math.max(parseInt(req.limit, 10) || 500, 1), 3000);
       return out_({ ok: true, logs: readLogs_(lim) });
@@ -132,9 +162,14 @@ function book_() {
   var p = PropertiesService.getScriptProperties(); var id = p.getProperty('SHEET_ID'); var ss = null;
   if (id) { try { ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; } }
   if (!ss) { ss = SpreadsheetApp.create(SHEET_NAME); p.setProperty('SHEET_ID', ss.getId()); }
-  sheet_(ss, 'Users', USER_COLS); sheet_(ss, 'Logs', LOG_COLS);
+  sheet_(ss, 'Users', USER_COLS); sheet_(ss, 'Logs', LOG_COLS); sheet_(ss, 'Samples', SAMPLE_COLS);
   var def = ss.getSheetByName('Sheet1'); if (def && ss.getSheets().length > 2) ss.deleteSheet(def);
   _SS = ss; return ss;
+}
+function folder_() {
+  var p = PropertiesService.getScriptProperties(); var id = p.getProperty('SAMPLE_FOLDER_ID');
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { } }
+  var fd = DriveApp.createFolder(SAMPLE_FOLDER); p.setProperty('SAMPLE_FOLDER_ID', fd.getId()); return fd;
 }
 function sheet_(ss, name, cols) { var sh = ss.getSheetByName(name); if (!sh) { sh = ss.insertSheet(name); sh.appendRow(cols); sh.setFrozenRows(1); } return sh; }
 function fresh_() { _USERS = null; }

@@ -51,18 +51,20 @@ function queueRowHtml(q) {
   return `<td><b>${esc(q.file.name)}</b><div class="small dim">${(q.file.size / 1024).toFixed(0)} KB ${q.hash ? '· ' + q.hash.slice(0, 12) + '…' : ''}</div></td><td>${esc(FIELDS[q.kind].label)}${q.result && q.result[0] && q.kind === 'statement' ? '<div class="small dim">' + esc(bankByCode(q.result[0].bank).name) + '</div>' : ''}</td>
     <td>${badge(st[0], st[1])}</td><td class="mono small">${esc((s.accts || []).slice(0, 4).join(', '))}${(s.accts || []).length > 4 ? ' +' + (s.accts.length - 4) : ''}</td><td class="num">${s.rows != null ? nfmt(s.rows) : ''}</td><td class="num">${s.rej ? `<span class="dr">${s.rej}</span>` : ''}</td>
     <td class="small" style="max-width:340px">${esc(notes)}</td>
-    <td class="nowrap">${['ready', 'review'].includes(q.status) ? `<button class="btn-sm" data-rev="${q.id}">Review</button> ` : ''}${q.status === 'ready' ? `<button class="btn-sm btn-p" data-imp="${q.id}">Import</button> ` : ''}${['ready', 'review', 'error', 'queued'].includes(q.status) ? `<button class="btn-sm btn-g" data-skip="${q.id}">✕</button>` : ''}</td>`;
+    <td class="nowrap">${['ready', 'review'].includes(q.status) ? `<button class="btn-sm" data-rev="${q.id}">Review</button> ` : ''}${q.status === 'ready' ? `<button class="btn-sm btn-p" data-imp="${q.id}">Import</button> ` : ''}${['ready', 'review', 'error'].includes(q.status) ? `<button class="btn-sm" data-rep="${q.id}" title="File not read correctly? Send a masked sample to the developer">⚑</button> ` : ''}${['ready', 'review', 'error', 'queued'].includes(q.status) ? `<button class="btn-sm btn-g" data-skip="${q.id}">✕</button>` : ''}</td>`;
 }
 function renderQueueRow(q) { const tr = $('#q_' + q.id); if (tr) { tr.innerHTML = queueRowHtml(q); bindQueue(tr); } }
 function bindQueue(host) {
   $$('[data-rev]', host).forEach(b => b.onclick = () => reviewModal(IMP.queue.find(q => q.id === b.dataset.rev)));
   $$('[data-imp]', host).forEach(b => b.onclick = async () => { const q = IMP.queue.find(q => q.id === b.dataset.imp); await commitQueued(q); refreshStmtStats(); renderQueue(); renderNav(); toast('Imported ' + q.file.name, 'ok'); });
+  $$('[data-rep]', host).forEach(b => b.onclick = () => sampleModal(IMP.queue.find(q => q.id === b.dataset.rep)));
   $$('[data-skip]', host).forEach(b => b.onclick = () => { const q = IMP.queue.find(q => q.id === b.dataset.skip); q.status = 'skipped'; renderQueue(); });
 }
 const colName = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
 function reviewModal(q) {
   let gi = 0;
-  const m = modal({ title: 'Parser review — ' + esc(q.file.name), body: '<div id="rv"></div>', foot: `<label class="row small" style="margin-right:auto"><input type="checkbox" id="rvTpl" checked> Save confirmed mapping as template for this bank/format</label><button data-c>Cancel</button><button id="rvApply">Re-parse with mapping</button><button class="btn-p" id="rvOk">Confirm & import</button>` });
+  const m = modal({ title: 'Parser review — ' + esc(q.file.name), body: '<div id="rv"></div>', foot: `<label class="row small" style="margin-right:auto"><input type="checkbox" id="rvTpl" checked> Save confirmed mapping as template for this bank/format</label><button id="rvRep" title="Send a masked sample of this file to the developer">⚑ Report file problem</button><button data-c>Cancel</button><button id="rvApply">Re-parse with mapping</button><button class="btn-p" id="rvOk">Confirm & import</button>` });
+  if ($('#rvRep', m.el)) $('#rvRep', m.el).onclick = () => sampleModal(q);
   const draw = () => {
     const G = q.grids[gi]; if (!G) { $('#rv', m.el).innerHTML = emptyState('No table could be found in this file. ' + (q.grids[0] && q.grids[0].g.noTable ? 'PDF text was extracted but no statement header row was detected.' : '')); return; }
     const hdr = G.hdr; const rows = G.g.rows; const ncol = Math.max(...rows.slice(0, 60).map(r => r.length));

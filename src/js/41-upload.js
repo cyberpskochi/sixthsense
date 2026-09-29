@@ -23,9 +23,10 @@ function upAfterImport(kind) {
 function qStatus(key) {
   const l = UP.q[key] || []; if (!l.length) return '';
   const q = l[l.length - 1]; const st = QSTAT[q.status]; const more = l.length > 1 ? ` <span class="dim small">+${l.length - 1} file(s)</span>` : '';
-  return `${badge(st[0], st[1])}${more}${q.status === 'review' ? ` <button class="btn-sm" data-qrev="${q.id}">Review</button>` : ''}${q.err ? `<div class="small" style="color:var(--red)">${esc(q.err)}</div>` : ''}${(q.reasons || []).length && q.status === 'review' ? `<div class="small dim">${esc(q.reasons.join(' · '))}</div>` : ''}`;
+  return `${badge(st[0], st[1])}${more}${q.status === 'review' ? ` <button class="btn-sm" data-qrev="${q.id}">Review</button>` : ''}${['review', 'error'].includes(q.status) ? ` <button class="btn-sm" data-qrep="${q.id}" title="Send a masked sample of this file to the developer">⚑ Report problem</button>` : ''}${q.err ? `<div class="small" style="color:var(--red)">${esc(q.err)}</div>` : ''}${(q.reasons || []).length && q.status === 'review' ? `<div class="small dim">${esc(q.reasons.join(' · '))}</div>` : ''}`;
 }
 function bindReview(host, redraw) {
+  $$('[data-qrep]', host).forEach(b => b.onclick = () => sampleModal(IMP.queue.find(x => x.id === b.dataset.qrep)));
   $$('[data-qrev]', host).forEach(b => b.onclick = () => { const q = IMP.queue.find(x => x.id === b.dataset.qrev); if (!q) return; reviewModal(q);
     const t = setInterval(async () => { if (!document.contains(b)) { clearInterval(t); } if (q.status === 'ready' && !$('#modalRoot .modal')) { clearInterval(t); await commitQueued(q); upAfterImport(q.kind); redraw(); } }, 600); });
 }

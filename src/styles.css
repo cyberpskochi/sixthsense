@@ -560,3 +560,8 @@ ul.chk li::before{position:absolute;left:2px;top:6px}ul.chk li.ok::before{conten
 /* layer show/hide squares — keep their own colours in every theme */
 body .gk .gk-lq{background:var(--lc)!important;color:#04101c!important;border:2px solid var(--lc)!important;opacity:1}
 body .gk .gk-lq:not(.on){background:rgba(8,12,20,.85)!important;color:var(--lc)!important;opacity:.85;text-decoration:line-through}
+/* masked file sample preview */
+.smp-t td{font-family:var(--mono);font-size:12px;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.smp-t tr.smp-h td{color:var(--cyan);font-weight:700;background:rgba(0,229,255,.06)}
+.smp-t td.smp-x{background:#000;color:#555}
+.smp-pre{max-height:220px;overflow:auto;font-size:11px;background:rgba(0,0,0,.3);padding:8px;border-radius:8px;white-space:pre}

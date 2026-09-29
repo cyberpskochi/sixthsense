@@ -19,7 +19,7 @@ async function parseQueued(q) {
   q.status = 'parsing'; renderQueue();
   try {
     const r = await readGrids(q.file, (p, m) => { q.msg = m; renderQueueRow(q); });
-    q.hash = r.hash; q.type = r.type;
+    q.hash = r.hash; q.type = r.type; q.rawGrids = r.grids;
     if (S.cur.work.imports.some(i => i.hash === q.hash && i.kind === q.kind)) q.warn = 'Identical file already imported (same SHA-256)';
     q.grids = r.grids.map(g => {
       const bank = q.opts.bank !== 'AUTO' ? q.opts.bank : null;

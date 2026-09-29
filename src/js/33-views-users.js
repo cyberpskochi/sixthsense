@@ -19,7 +19,9 @@ VIEWS.users = async el => {
       <p class="small dim" style="margin:8px 0 0">While your Google app is in <b>Testing</b>, also add this Gmail under Google Cloud → Audience → Test users (or publish the app to <b>In production</b> so this page is the only gate).</p></div>
     <div class="card" style="--pc:#ff2e88;margin-bottom:14px"><h3>Users</h3><div id="uTbl"><div class="muted small">Loading…</div></div></div>
     <div class="card" style="--pc:#00e5ff"><div class="row sb"><h3 style="margin:0">Activity log</h3><div class="row"><input id="lgF" placeholder="Filter…" style="width:220px"><button class="btn-sm" id="lgX">Export</button></div></div>
-      <p class="small dim" style="margin:6px 0 10px">Sign-ins, access requests, sign-outs, reports, backups and admin changes. The full log is in the Google Sheet <b>SIXTH SENSE — Users &amp; Logs</b> in the admin's Drive. Case contents are never sent to this log.</p><div id="lgTbl"></div></div>`;
+      <p class="small dim" style="margin:6px 0 10px">Sign-ins, access requests, sign-outs, reports, backups and admin changes. The full log is in the Google Sheet <b>SIXTH SENSE — Users &amp; Logs</b> in the admin's Drive. Case contents are never sent to this log.</p><div id="lgTbl"></div></div>
+    <div class="card" style="--pc:#ffb300;margin-top:14px"><div class="row sb"><h3 style="margin:0">⚑ File samples from officers</h3><button class="btn-sm" id="smpRef">↻</button></div><p class="small dim" style="margin:6px 0 10px">Masked samples of statements / CDRs / NCRP files the app could not read. Numbers, names and ids were replaced in the officer's browser before sending. Download the JSON and share it for a reader fix. Stored in the Drive folder <b>SIXTH SENSE — File samples</b>.</p><div id="smpCard"></div></div>`;
+  drawSamplesAdmin($('#smpCard', el)); $('#smpRef', el).onclick = () => drawSamplesAdmin($('#smpCard', el));
   const load = async () => {
     try {
       const [u, l] = await Promise.all([Backend.call('listUsers'), Backend.call('getLogs', { limit: 800 })]);
