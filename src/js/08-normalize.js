@@ -17,7 +17,7 @@ function extractStmtMeta(text, fileName) {
   const b = detectBank(t, fileName); if (b) meta.bank = b.code;
   return meta;
 }
-const SUMMARY_RX = /^(opening|closing)\s*balance|^(grand\s*)?total|^b\/f|^c\/f|brought\s*forward|carried\s*forward|^page\s*\d|statement\s*summary|^\*+\s*end|end\s*of\s*statement|computer\s*generated|^dr\s*count|^cr\s*count/i;
+const SUMMARY_RX = /page\s*total|cumulative\s*totals?|^(opening|closing)\s*balance|^(grand\s*)?total|^b\/f|^c\/f|brought\s*forward|carried\s*forward|^page\s*\d|statement\s*summary|^\*+\s*end|end\s*of\s*statement|computer\s*generated|^dr\s*count|^cr\s*count/i;
 
 function normStatement(grid, hdr, opts) {
   const { map } = hdr; const rows = grid.rows; const start = hdr.row + (hdr.rows || 1);
@@ -28,7 +28,7 @@ function normStatement(grid, hdr, opts) {
     const row = rows[r]; const ref = grid.rowRef[r] || { row: r + 1 };
     const joined = row.map(cellText).join(' ').trim(); if (!joined) continue;
     const first = cellText(row.find(v => v !== '' && v != null));
-    if (SUMMARY_RX.test(first) || SUMMARY_RX.test(cellText(row[map.narr]))) {
+    if (SUMMARY_RX.test(first) || SUMMARY_RX.test(cellText(row[map.narr])) || /page\s*total|cumulative\s*totals?|transaction\s*total/i.test(joined)) {
       const nums = row.map(v => parseAmount(v).v).filter(v => v != null);
       if (/opening/i.test(joined) && nums.length) opening = nums[nums.length - 1];
       if (/closing/i.test(joined) && nums.length) closing = nums[nums.length - 1];
@@ -44,6 +44,7 @@ function normStatement(grid, hdr, opts) {
       const hasAmt = [dr.v, cr.v, amt.v].some(v => v != null && v !== 0);
       if (!hasAmt && prev && narrCell) { prev.narr = (prev.narr + ' ' + narrCell).trim(); prev.raw += ' | ' + joined.slice(0, 160); continue; } // continuation line
       if (!hasAmt) continue;
+      if (!/[A-Za-z]{2}/.test(joined.replace(/\b(cr|dr)\b/ig, ''))) continue; // figures only, no date: statement summary / totals line
       rejects.push({ row: ref, reason: 'Date missing or unreadable', raw: joined.slice(0, 300) }); continue;
     }
     let D = 0, C = 0;
@@ -58,6 +59,8 @@ function normStatement(grid, hdr, opts) {
     if (!D && !C) { rejects.push({ row: ref, reason: 'No debit/credit amount', raw: joined.slice(0, 300) }); continue; }
     let bal = map.balance !== undefined ? parseAmount(row[map.balance]) : { v: null };
     let balV = bal.v; if (balV != null && bal.ind === 'DR') balV = -Math.abs(balV);
+    let signFlip = false; // a minus sign inside a debit/credit column: reversal or just the bank's style — let the running balance decide
+    if ((dr.v < 0 || cr.v < 0) && balV != null && prev && prev.bal != null && Math.abs(round2(prev.bal + C - D) - balV) > 0.02 && Math.abs(round2(prev.bal + D - C) - balV) <= 0.02) { [D, C] = [C, D]; signFlip = true; }
     // time: explicit column → posting date/time → date cell time → narration
     let ts = d.ts, hasTime = d.hasTime;
     const tryT = v => { const t = parseTimeStr(typeof v === 'object' && v && v.d ? pad(v.d[3]) + ':' + pad(v.d[4]) + ':' + pad(v.d[5]) : v); if (t && (t[0] || t[1] || t[2])) { const day = new Date(d.ts); ts = mkTs(day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), t[0], t[1], t[2]); hasTime = true; return true; } return false; };
@@ -76,6 +79,7 @@ function normStatement(grid, hdr, opts) {
       src: { file: opts.fileName, sheet: grid.sheet, page: ref.page || null, row: ref.row }, raw: joined.slice(0, 300), flags: []
     };
     if (!t.hasTime) t.flags.push('NO_TIME');
+    if (signFlip) t.flags.push('NEGATIVE_AMOUNT_REVERSAL');
     out.push(t); prev = t;
   }
   // group by account (bulk bank replies may carry many accounts in one sheet)

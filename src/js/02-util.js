@@ -120,7 +120,7 @@ function parseAmount(v) {
   if (typeof v === 'object') return { v: null, ind: null };
   let s = String(v).trim(); if (!s || /^[-–—]+$/.test(s)) return { v: null, ind: null };
   let ind = null;
-  const mi = s.match(/\b(cr|dr|c|d)\.?\s*$/i) || s.match(/^\s*(cr|dr)\b/i);
+  const mi = s.match(/\(?\s*(cr|dr)\s*\.?\s*\)?\s*$/i) || s.match(/\b(c|d)\.?\s*$/i) || s.match(/^\s*(cr|dr)\b/i);
   if (mi) { const t = mi[1].toLowerCase(); ind = t[0] === 'c' ? 'CR' : 'DR'; s = s.replace(mi[0], ''); }
   let neg = false;
   if (/^\(.*\)$/.test(s.trim())) { neg = true; s = s.replace(/[()]/g, ''); }

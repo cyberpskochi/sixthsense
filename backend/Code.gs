@@ -27,6 +27,7 @@ var LOG_COLS = ['ts', 'email', 'name', 'action', 'detail', 'ip'];
 var SAMPLE_COLS = ['id', 'ts', 'email', 'name', 'kind', 'bank', 'fileType', 'problem', 'note', 'size', 'fileId'];
 var SAMPLE_FOLDER = 'SIXTH SENSE — File samples';
 
+// GET = warm-up ping (the app calls it when the sign-in screen opens so the script is awake before sign-in)
 function doGet() { return out_({ ok: true, app: 'SIXTH SENSE access backend', time: new Date().toISOString() }); }
 
 function doPost(e) {
@@ -45,8 +46,8 @@ function doPost(e) {
         log_(who.email, req.name, 'ACCESS REQUESTED', 'New sign-in waiting for admin approval', ip);
         return out_({ ok: true, status: 'pending', role: 'user' });
       }
-      me.lastLogin = now_(); me.lastIP = ip; if (!me.name && req.name) me.name = clip_(req.name, 80);
-      writeUser_(me);
+      if (!me.name && req.name) { me.name = clip_(req.name, 80); writeUser_(me); }
+      queue_({ t: 'seen', email: who.email, ts: now_(), ip: ip });   // last-login time / IP written by the 1-minute flush
       log_(who.email, me.name, me.status === 'approved' ? 'LOGIN' : 'LOGIN DENIED (' + me.status + ')', '', ip);
       return out_({ ok: true, status: me.status, role: me.role, name: me.name });
     }
@@ -81,7 +82,7 @@ function doPost(e) {
 
     if (me.role !== 'admin') return out_({ ok: false, error: 'Admin only' });
 
-    if (a === 'listUsers') return out_({ ok: true, users: readUsers_(), mainAdmin: c.admin, me: who.email });
+    if (a === 'listUsers') { flushLogs_(); _USERS = null; return out_({ ok: true, users: readUsers_(), mainAdmin: c.admin, me: who.email }); }
 
     if (a === 'addUser') {
       var em = String(req.email || '').toLowerCase().trim();
@@ -172,13 +173,15 @@ function folder_() {
   var fd = DriveApp.createFolder(SAMPLE_FOLDER); p.setProperty('SAMPLE_FOLDER_ID', fd.getId()); return fd;
 }
 function sheet_(ss, name, cols) { var sh = ss.getSheetByName(name); if (!sh) { sh = ss.insertSheet(name); sh.appendRow(cols); sh.setFrozenRows(1); } return sh; }
-function fresh_() { _USERS = null; }
+function fresh_() { _USERS = null; try { CacheService.getScriptCache().remove('users_v1'); } catch (e) { } }
 function users_() { return book_().getSheetByName('Users'); }
 function readUsers_() {
   if (_USERS) return _USERS;
+  var cache = CacheService.getScriptCache(); var hit = cache.get('users_v1');
+  if (hit) { _USERS = JSON.parse(hit); return _USERS; }
   var sh = users_(); var v = sh.getDataRange().getValues(); var out = [];
   for (var i = 1; i < v.length; i++) { if (!v[i][0]) continue; var o = { _row: i + 1 }; USER_COLS.forEach(function (k, j) { o[k] = v[i][j] instanceof Date ? v[i][j].toISOString() : String(v[i][j] || ''); }); out.push(o); }
-  _USERS = out; return out;
+  _USERS = out; try { var js = JSON.stringify(out); if (js.length < 95000) cache.put('users_v1', js, 600); } catch (e) { } return out;
 }
 function findUser_(email) { email = String(email || '').toLowerCase(); var us = readUsers_(); for (var i = 0; i < us.length; i++) if (us[i].email.toLowerCase() === email) return us[i]; return null; }
 function withLock_(fn) { var l = LockService.getScriptLock(); l.waitLock(15000); try { return fn(); } finally { l.releaseLock(); } }
@@ -192,8 +195,29 @@ function ensureMainAdmin_(admin) {
   else if (u.role !== 'admin' || u.status !== 'approved' || u.note !== 'main admin') { u.role = 'admin'; u.status = 'approved'; u.note = 'main admin'; writeUser_(u); }
   cache.put('mainok_' + admin, '1', 600);
 }
-function log_(email, name, action, detail, ip) { withLock_(function () { book_().getSheetByName('Logs').appendRow([now_(), safe_(email), safe_(name || ''), safe_(action), safe_(detail || ''), safe_(ip || '')]); }); }
+/* Fast logging: entries go to a durable queue (Script properties, ~50 ms) and a 1-minute trigger
+   (installed by setup) moves them into the Logs sheet. Admin log views flush first, so nothing is lost. */
+function log_(email, name, action, detail, ip) { queue_({ t: 'log', row: [now_(), safe_(email), safe_(name || ''), safe_(action), safe_(detail || ''), safe_(ip || '')] }); }
+function queue_(o) {
+  try { PropertiesService.getScriptProperties().setProperty('q_' + Date.now() + '_' + Math.floor(Math.random() * 1e6), JSON.stringify(o)); }
+  catch (e) { if (o.t === 'log') withLock_(function () { book_().getSheetByName('Logs').appendRow(o.row); }); }
+}
+function flushLogs_() {
+  withLock_(function () {
+    var p = PropertiesService.getScriptProperties(); var all = p.getProperties(); var keys = Object.keys(all).filter(function (k) { return k.indexOf('q_') === 0; }).sort();
+    if (!keys.length) return;
+    var rows = [], seen = {};
+    keys.forEach(function (k) { try { var o = JSON.parse(all[k]); if (o.t === 'log') rows.push(o.row); else if (o.t === 'seen') seen[o.email] = o; } catch (e) { } });
+    if (rows.length) { var sh = book_().getSheetByName('Logs'); sh.getRange(sh.getLastRow() + 1, 1, rows.length, LOG_COLS.length).setValues(rows); }
+    var em = Object.keys(seen);
+    if (em.length) { _USERS = null; var us = readUsers_(); var sh2 = users_(); var li = USER_COLS.indexOf('lastLogin');
+      us.forEach(function (u) { var s = seen[u.email.toLowerCase()]; if (s) sh2.getRange(u._row, li + 1, 1, 2).setValues([[s.ts, safe_(s.ip || '')]]); }); _USERS = null; try { CacheService.getScriptCache().remove('users_v1'); } catch (e) { } }
+    keys.forEach(function (k) { p.deleteProperty(k); });
+  });
+}
+function flushLogs() { flushLogs_(); } // for the time trigger
 function readLogs_(limit) {
+  flushLogs_();
   var sh = book_().getSheetByName('Logs'); var n = sh.getLastRow() - 1; if (n <= 0) return [];
   var start = Math.max(2, sh.getLastRow() - limit + 1); var v = sh.getRange(start, 1, sh.getLastRow() - start + 1, LOG_COLS.length).getValues();
   return v.reverse().map(function (r) { var o = {}; LOG_COLS.forEach(function (k, j) { o[k] = r[j] instanceof Date ? r[j].toISOString() : String(r[j] || ''); }); return o; });
@@ -207,4 +231,8 @@ function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).set
 function setup() {
   var c = cfg_(); if (!c.clientId || !c.admin) throw new Error('Set CLIENT_ID and ADMIN_EMAIL in Project Settings → Script properties first');
   ensureMainAdmin_(c.admin); Logger.log('Users & Logs sheet: ' + book_().getUrl());
+  // 1-minute trigger that writes queued log entries / last-login times to the sheet
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'flushLogs') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('flushLogs').timeBased().everyMinutes(1).create();
+  folder_(); Logger.log('Log flush trigger installed (every minute).');
 }

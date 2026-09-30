@@ -6,14 +6,14 @@ const GAuth = {
     if (window.google && google.accounts && google.accounts.oauth2) return;
     await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.onload = res; s.onerror = () => rej(new Error('Could not load Google Sign-In (offline?)')); document.head.appendChild(s); });
   },
-  async request(prompt = '') {
+  async request(prompt = '', hint = '') {
     await this.loadGis();
     if (!this.client) this.client = google.accounts.oauth2.initTokenClient({
       client_id: CONFIG.GOOGLE_CLIENT_ID, scope: 'openid email profile ' + CONFIG.DRIVE_SCOPE,
       callback: r => { const p = this.pending; this.pending = null; if (!p) return; if (r.error) p.rej(new Error(r.error_description || r.error)); else { this.token = r.access_token; this.exp = Date.now() + (r.expires_in - 60) * 1000; p.res(r); } },
       error_callback: e => { const p = this.pending; this.pending = null; p && p.rej(new Error(e.message || e.type || 'Sign-in cancelled')); }
     });
-    return new Promise((res, rej) => { this.pending = { res, rej }; this.client.requestAccessToken({ prompt }); });
+    return new Promise((res, rej) => { this.pending = { res, rej }; this.client.requestAccessToken(hint ? { prompt, hint } : { prompt }); });
   },
   valid() { return this.token && Date.now() < this.exp; },
   async ensure() { if (!this.valid()) await this.request(''); return this.token; },
@@ -27,7 +27,9 @@ const GAuth = {
     if (!E.length && !D.length) return true;
     return E.includes(email) || D.includes(email.split('@')[1]);
   },
-  signOut() { if (this.token && window.google) try { google.accounts.oauth2.revoke(this.token, () => {}); } catch {} this.token = null; this.exp = 0; }
+  // The access token lives only in memory and is dropped here. It is not revoked by default: revoking removes the app's
+  // permission, so the next sign-in would show Google's consent screen again (slow). Pass true to fully revoke.
+  signOut(revoke = false) { if (revoke && this.token && window.google) try { google.accounts.oauth2.revoke(this.token, () => {}); } catch {} this.token = null; this.exp = 0; }
 };
 
 const Drive = {

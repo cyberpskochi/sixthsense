@@ -12,43 +12,50 @@ ${inner}
 const GLOGO = '<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 38.2 44 33 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
 function showLogin(msg = '', kind = 'notice') {
   const g = GAuth.configured();
-  if (g) { GAuth.loadGis().catch(() => {}); if (Backend.on() && !Backend.ipP) Backend.ipP = Backend.publicIP(); } // warm up while the officer reads the screen
+  if (g) { GAuth.loadGis().catch(() => {}); if (Backend.on()) { if (!Backend.ipP) Backend.ipP = Backend.publicIP(); if (!Backend.warm) { Backend.warm = 1; fetch(Backend.url(), { mode: 'no-cors', credentials: 'omit', cache: 'no-store' }).catch(() => {}); } } } // wake the access server + load Google sign-in while the officer reads the screen
+  let last = ''; try { last = localStorage.getItem('ss_last_email') || ''; } catch { }
   const b = bootCard(`<div class="lock-form">
     ${msg ? `<div class="${kind === 'ok' ? 'notice info' : kind === 'err' ? 'notice err' : 'notice'}">${esc(msg)}</div>` : ''}
     ${!g && !CONFIG.ALLOW_LOCAL_MODE ? `<div class="notice err"><b>Google sign-in is not configured for this deployment.</b><br>The administrator must add the GOOGLE_CLIENT_ID repository variable and re-run the build workflow. Access is blocked until then.</div>`
       : g ? `<p class="muted center" style="margin:0 0 4px;font-size:14px">Authorised personnel only. Sign in with your Google account — access is granted by the admin.</p>
-        <button class="gbtn" id="gSign">${GLOGO} Sign in with Google</button><div class="small muted center" id="gBusy"></div>`
+        <button class="gbtn" id="gSign">${GLOGO} ${last ? 'Continue as ' + esc(last) : 'Sign in with Google'}</button>${last ? `<div class="center"><a href="#" id="gOther" class="small">Use a different Google account</a></div>` : ''}<div class="small muted center" id="gBusy"></div>`
       : `<div class="notice info">Local test mode (not for production).</div>
          <label class="f">Officer name / e-mail for this local profile<input id="locName" placeholder="e.g. io.cyberkochi@kerala.gov.in"></label>
          <button class="btn-p" id="locGo">Continue in local mode</button>`}
     <div class="sec-note">🔐 Statements, CDR, IP logs and reports are processed only in this browser and stored AES-256-GCM encrypted with a key derived from your vault passphrase (PBKDF2-SHA256, ${nfmt(CONFIG.PBKDF2_ITER)} iterations). Google Drive receives only encrypted backup packages.</div>
   </div>`);
-  if (g) $('#gSign', b).onclick = async () => {
+  /* Fast sign-in: the remembered account is offered directly (no account chooser), the access check runs in the
+     background while the vault screen is shown / the passphrase is typed, and the vault opens only after the
+     access server has confirmed the account is approved. */
+  const doSign = async prompt => {
     const btn = $('#gSign', b), busy = $('#gBusy', b);
     try {
       btn.disabled = true; busy.textContent = 'Waiting for Google…';
-      await GAuth.request('select_account'); const u = await GAuth.userinfo();
+      await GAuth.request(prompt, prompt ? '' : last); const u = await GAuth.userinfo();
       if (!u.email_verified) throw new Error('Google e-mail address is not verified');
+      try { localStorage.setItem('ss_last_email', u.email.toLowerCase()); } catch { }
       let role = 'user';
       if (Backend.on()) {
-        busy.textContent = 'VERIFYING ACCESS…'; Backend.ip = await Promise.race([Backend.ipP || Backend.publicIP(), new Promise(r => setTimeout(() => r(''), 1500))]); Backend.ipP = null;
-        const r = await Backend.call('login', { name: u.name || '' });
-        if (r.status !== 'approved') {
-          GAuth.signOut();
-          return showLogin(r.status === 'pending' ? `Access request sent for ${u.email}. The admin must approve your account before you can use SIXTH SENSE.` : r.status === 'blocked' ? `The account ${u.email} has been blocked by the admin.` : 'Access denied.', r.status === 'pending' ? 'notice' : 'err');
-        }
-        role = r.role === 'admin' ? 'admin' : 'user';
+        S.access = (async () => {
+          Backend.ip = await Promise.race([Backend.ipP || Backend.publicIP(), new Promise(r => setTimeout(() => r(''), 300))]); Backend.ipP = null;
+          const r = await Backend.call('login', { name: u.name || '' });
+          if (r.status !== 'approved') { const msg = r.status === 'pending' ? `Access request sent for ${u.email}. The admin must approve your account before you can use SIXTH SENSE.` : r.status === 'blocked' ? `The account ${u.email} has been blocked by the admin.` : 'Access denied.'; GAuth.signOut(); S.user = null; showLogin(msg, r.status === 'pending' ? 'notice' : 'err'); throw new Error(msg); }
+          if (S.user) S.user.role = r.role === 'admin' ? 'admin' : 'user'; return r;
+        })();
+        S.access.catch(e => { if (!/Access request sent|blocked|Access denied/.test(e.message)) { GAuth.signOut(); S.user = null; showLogin('Sign-in failed: ' + e.message, 'err'); } });
       } else {
         if (!GAuth.allowed(u.email, u.email_verified)) { GAuth.signOut(); return showLogin('Access denied for ' + u.email + '. This account is not on the authorised list.', 'err'); }
-        role = 'admin'; // no access server configured: single-office mode
+        role = 'admin'; S.access = Promise.resolve({ status: 'approved' }); // no access server configured: single-office mode
       }
       S.user = { email: u.email.toLowerCase(), name: u.name, picture: u.picture, google: true, role };
       showVaultScreen();
     } catch (e) { GAuth.signOut(); showLogin('Sign-in failed: ' + e.message, 'err'); }
   };
-  else if ($('#locGo', b)) $('#locGo', b).onclick = () => { const n = $('#locName', b).value.trim(); if (n.length < 3) return toast('Enter a name or e-mail', 'warn'); S.user = { email: n.toLowerCase(), name: n, google: false, role: 'admin' }; showVaultScreen(); };
+  if (g) { $('#gSign', b).onclick = () => doSign(last ? '' : 'select_account'); if ($('#gOther', b)) $('#gOther', b).onclick = e => { e.preventDefault(); try { localStorage.removeItem('ss_last_email'); } catch { } last = ''; doSign('select_account'); }; }
+  if (!g && $('#locGo', b)) $('#locGo', b).onclick = () => { S.access = Promise.resolve({ status: 'approved' }); const n = $('#locName', b).value.trim(); if (n.length < 3) return toast('Enter a name or e-mail', 'warn'); S.user = { email: n.toLowerCase(), name: n, google: false, role: 'admin' }; showVaultScreen(); };
 }
 async function afterUnlock() {
+  if (S.access) { const bz = $('#vBusy'); if (bz) bz.textContent = 'Verifying access…'; try { await S.access; } catch { Vault.lock && Vault.lock(); return; } }
   await loadIndex(); S.lastActivity = Date.now(); S.view = 'cases'; renderShell(); go('cases');
   if (isAdmin() && Backend.on()) Backend.call('listUsers').then(r => { ADM.users = r.users || []; ADM.pending = ADM.users.filter(u => u.status === 'pending').length; ADM.mainAdmin = r.mainAdmin || ''; renderNav(); if (ADM.pending) toast(`${ADM.pending} user(s) waiting for approval — see Users & Access`, 'warn', 7000); }).catch(() => {});
 }
@@ -99,7 +106,7 @@ async function signOut(reason) {
   try { await Vault.forget(); } catch {}
   Vault.lock(); GEO.reset(); NODAL.reset(); S.cur = null; S.derived = null; S.index = []; killCharts(); $('#modalRoot').innerHTML = '';
   $('#app').innerHTML = ''; $('#app').hidden = true;
-  setTimeout(() => GAuth.signOut(), 400); S.user = null; ADM.users = []; ADM.pending = 0;
+  setTimeout(() => GAuth.signOut(/withdrawn|blocked/i.test(reason || '')), 400); S.user = null; S.access = null; ADM.users = []; ADM.pending = 0;
   showLogin(reason, /withdrawn|blocked/i.test(reason || '') ? 'err' : 'ok');
 }
 function passStrength(p) {

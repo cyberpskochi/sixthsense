@@ -70,6 +70,11 @@ function runNormalise(q) {
     G.res = res; q.result.push(G);
     if (q.kind !== 'statement' && res.rows && !res.rows.length) { q.needsReview = true; q.reasons.push('No rows parsed from ' + G.g.sheet); }
   }
+  if (q.kind === 'statement' && q.result.length > 1) { // a second sheet that only repeats rows of another sheet (e.g. an ATM-only extract) is not imported twice
+    const key = t => [t.ts, round2(t.dr || 0), round2(t.cr || 0)].join('|');
+    const all = q.result.map(G => ({ G, txns: (G.res && G.res.groups || []).flatMap(g => g.txns) }));
+    for (const a of all) { if (!a.txns.length) continue; for (const b of all) { if (a === b || b.skipDup || !b.txns.length || b.txns.length < a.txns.length) continue; const ks = new Set(b.txns.map(key)); if (a.txns.every(t => ks.has(key(t)))) { a.skipDup = true; a.G.res.groups = []; q.reasons.push(`Sheet "${a.G.g.sheet}" repeats rows of sheet "${b.G.g.sheet}" — not imported twice`); break; } } }
+  }
   if (!usable) { q.needsReview = true; if (!q.reasons.length) q.reasons.push('Required columns not identified'); }
   q.reasons = uniq(q.reasons);
   q.summary = summariseQ(q);
