@@ -34,7 +34,14 @@ async function saveNow() {
   } catch (e) { console.error(e); toast('Save failed: ' + e.message, 'err'); parts.forEach(p => S.dirty.add(p)); }
 }
 function caseSummary(c) {
-  return { id: c.meta.id, crimeNo: c.meta.crimeNo, ps: c.meta.ps, type: c.meta.type, status: c.meta.status, io: c.meta.io, demo: !!c.meta.demo, created: c.meta.created, updated: nowStamp(), accts: c.accts.length, txns: c.txns.length, cdr: c.telecom.cdr.length, lastBackup: c.meta.lastBackup };
+  return { id: c.meta.id, crimeNo: c.meta.crimeNo, ps: c.meta.ps, type: c.meta.type, status: c.meta.status, io: c.meta.io, demo: !!c.meta.demo, created: c.meta.created, updated: nowStamp(), accts: c.accts.length, txns: c.txns.length, cdr: c.telecom.cdr.length, lastBackup: c.meta.lastBackup, mode: c.meta.mode || '', ack: c.meta.ack || '', petitioner: c.meta.petitioner || '' };
+}
+/* An NCRP-trail-only session (meta.mode === 'ncrp') needs no case details: the acknowledgement number is read from the NCRP file. */
+const isQuick = c => !!(c && c.meta && c.meta.mode === 'ncrp');
+function caseTitle(m) {
+  if (m.crimeNo) return m.crimeNo;
+  if (m.mode === 'ncrp') return 'NCRP trail' + (m.ack ? ' · ' + String(m.ack).split(',')[0].trim() : '') + (m.petitioner ? ' — ' + m.petitioner : '');
+  return m.id;
 }
 async function loadIndex() { S.index = (await Vault.get('index')) || []; S.templates = (await Vault.get('templates')) || []; Object.assign(S.prefs, (await Vault.get('prefs')) || {}); }
 async function savePrefs() { await Vault.put('prefs', S.prefs); }

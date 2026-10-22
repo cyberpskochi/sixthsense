@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 V = ROOT / 'vendor'; SHOTS = ROOT / 'test' / 'shots'; SHOTS.mkdir(exist_ok=True)
 MAP = {'@e965/xlsx@0.20.3/': V / 'e965/package/', 'pdfjs-dist@3.11.174/': V / 'pdfjs-dist-3.11.174/package/', 'cytoscape@3.30.2/': V / 'cytoscape-3.30.2/package/',
-       'chart.js@4.4.4/': V / 'chart.js-4.4.4/package/', 'jspdf@2.5.1/': V / 'jspdf-2.5.1/package/', 'jspdf-autotable@3.8.2/': V / 'jspdf-autotable-3.8.2/package/', 'tesseract.js@5.1.1/': V / 'tesseract.js-5.1.1/package/'}
+       'chart.js@4.4.4/': V / 'chart.js-4.4.4/package/', 'jspdf@2.5.1/': V / 'jspdf-2.5.1/package/', 'jspdf-autotable@3.8.2/': V / 'jspdf-autotable-3.8.2/package/', 'tesseract.js@5.1.1/': V / 'tesseract.js-5.1.1/package/', 'pdf-lib@1.17.1/': V / 'pdf-lib-1.17.1/package/', 'docx@8.5.0/': V / 'docx-8.5.0/package/'}
 
 def serve():
     h = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(ROOT / 'dist'))
@@ -32,7 +32,7 @@ def main(mode):
         pg.goto('http://127.0.0.1:8765/CFITS.html'); pg.wait_for_selector('#locName', timeout=20000)
         pg.fill('#locName', 'test.io@kerala.gov.in'); pg.click('#locGo')
         pg.wait_for_selector('#vp1'); pg.fill('#vp1', 'Correct-Horse-Battery-77'); pg.fill('#vp2', 'Correct-Horse-Battery-77'); pg.click('#vGo')
-        pg.wait_for_selector('#cNew', timeout=60000)
+        pg.wait_for_selector('#hubCase', timeout=60000); pg.evaluate("go('cases')"); pg.wait_for_selector('#cNew', timeout=20000)
         if mode in ('demo', 'all'):
             t = time.time(); pg.click('#cDemo'); pg.wait_for_selector('#chLayer', timeout=120000); print('demo built in %.1fs' % (time.time() - t))
             pg.wait_for_timeout(800); pg.screenshot(path=str(SHOTS / '01_dashboard.png'), full_page=False)
@@ -60,7 +60,7 @@ def main(mode):
             # encrypted package round-trip
             rt = pg.evaluate("""async () => { const b = await Vault.pack(casePackage(S.cur)); const p = await Vault.unpack(b); let bad=null; try { await Vault.unpack(b, 'wrong-pass-123456'); } catch(e){ bad=e.message } return {size:b.length, txns:p.data.txns.length, wrong:bad}; }"""); print('package', rt)
         if mode in ('import', 'all'):
-            pg.evaluate("go('cases')"); pg.click('#cNew'); pg.fill('#f_id', 'TEST-IMPORT-1'); pg.fill('#f_crime', 'Cr 1/2026'); pg.click('[data-s]'); pg.wait_for_selector('#drop')
+            pg.evaluate("go('cases')"); pg.click('#cNew'); pg.fill('#f_id', 'TEST-IMPORT-1'); pg.fill('#f_crime', 'Cr 1/2026'); pg.click('[data-s]'); pg.wait_for_timeout(1200)
             S = ROOT / 'test' / 'samples'
             def imp(kind, files, opts=None):
                 pg.evaluate(f"IMP.kind='{kind}'; IMP.opts=Object.assign(IMP.opts,{json.dumps(opts or {})}); go('import')")
@@ -90,7 +90,7 @@ def main(mode):
             pg.evaluate("openTx(S.cur.work.disputed[0])"); pg.wait_for_timeout(500); pg.screenshot(path=str(SHOTS / '33_import_tx.png'))
         # lock & unlock
         pg.evaluate("lockApp('test')"); pg.wait_for_selector('#vp1'); pg.fill('#vp1', 'wrong-pass-000000'); pg.click('#vGo'); pg.wait_for_timeout(2500)
-        pg.fill('#vp1', 'Correct-Horse-Battery-77'); pg.click('#vGo'); pg.wait_for_selector('#cNew', timeout=60000); print('cases after relock:', pg.evaluate("S.index.map(x=>x.id+':'+x.txns)"))
+        pg.fill('#vp1', 'Correct-Horse-Battery-77'); pg.click('#vGo'); pg.wait_for_selector('#hubCase', timeout=60000); pg.evaluate("go('cases')"); pg.wait_for_selector('#cNew', timeout=20000); print('cases after relock:', pg.evaluate("S.index.map(x=>x.id+':'+x.txns)"))
         b.close()
     srv.shutdown()
     print('\nCONSOLE ERRORS/WARNINGS:', len(errors)); [print(' ', e[:300]) for e in errors[:40]]

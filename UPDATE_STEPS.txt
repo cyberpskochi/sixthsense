@@ -1,0 +1,28 @@
+SIXTH SENSE - UPDATE v1.1.0   (step by step)
+=============================================
+What is new in this version
+  1. Upload menu: "NCRP Trail" and "Case Upload" are two separate tabs.
+       NCRP Trail  = only the NCRP file (ack. number read from file, petitioner name optional) -> graph + letters.
+       Case Upload = full Upload Center (NCRP report, bank statements, CDR, KYC, IP logs).
+  2. 94 BNSS Letters: bank notices only; the full letter fits on the screen (Fit page / Fit width / 100% / +,-).
+  3. Roomier layout on every page; slim icon menu on Letters and Graph pages (the arrow button near the top-left toggles).
+  4. NEW: PDF TOOLS (left menu): Compress, Merge (page ranges), Extract/reorder pages, Edit text / Add text / Redact.
+
+Which files to upload  (everything else in this ZIP is unchanged - no need to upload it again)
+  - the folder  src          (54 files - IMPORTANT: new files 41b-start.js and 48-pdftools.js are inside)
+  - build.py
+  - fetch_vendor.sh          (IMPORTANT: now also downloads the PDF library; without it the build will fail)
+
+STEPS
+  1. Unzip sixthsense-complete.zip on your computer.
+  2. Open  https://github.com/cyberpskochi/sixthsense/upload/main
+  3. Drag these three things from the unzipped folder into the page: the "src" folder, "build.py", "fetch_vendor.sh".
+     Wait until all files show as uploaded (about 56 files).
+  4. In "Commit changes" write:  Update v1.1.0 - NCRP Trail, PDF tools   -> choose "Commit directly to the main branch" -> Commit changes.
+  5. Open the "Actions" tab of the repository. A run named "Build and deploy SIXTH SENSE to GitHub Pages" starts.
+     Wait until it shows a green tick (1-3 minutes). If it is red, open it, copy the error text and send it to me.
+  6. Open https://cyberpskochi.github.io/sixthsense/ and press Ctrl+F5 (hard refresh). On a phone: close the tab and open again.
+  7. Check it worked: the bottom of the left menu shows  "v1.1.0",  the menu has NCRP Trail / Case Upload and  PDF TOOLS.
+     If it still says v1.0.0, the old page is cached or the Actions run has not finished/was red.
+
+Tip: if your browser shows an old page, open the site in a private window once.

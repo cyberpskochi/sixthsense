@@ -31,6 +31,7 @@ def build(client_id='__GOOGLE_CLIENT_ID__', out='dist/CFITS.html'):
         'pdfWorker': {'src': CDN + PDF_WORKER[0], 'sri': sri(PDF_WORKER[1])},
         'tesseract': {'src': CDN + TESS[0], 'sri': sri(TESS[1])},
         'docx': {'g': 'docx', 'src': CDN + 'docx@8.5.0/build/index.umd.js', 'sri': sri(V / 'docx-8.5.0/package/build/index.umd.js')},
+        'pdflib': {'g': 'pdflib', 'src': CDN + 'pdf-lib@1.17.1/dist/pdf-lib.min.js', 'sri': sri(V / 'pdf-lib-1.17.1/package/dist/pdf-lib.min.js')},
         'tessWorker': CDN + 'tesseract.js@5.1.1/dist/worker.min.js',
         'tessCore': CDN + 'tesseract.js-core@5.1.1',
         'tessLang': CDN + '@tesseract.js-data/eng@1.0.0/4.0.0_best_int',

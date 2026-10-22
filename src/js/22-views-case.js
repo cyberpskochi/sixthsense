@@ -1,19 +1,20 @@
 /* ------------------------------ CASES ------------------------------ */
 VIEWS.cases = el => {
   el.innerHTML = pageHead('Case Management', 'Every record belongs to a case. Case data is encrypted at rest; demo data is kept in a separate, clearly marked case.',
-    `<button class="btn-p" id="cNew">＋ New case</button><button id="cImp">⇪ Import case package</button><button id="cDemo">▶ Load demo case</button><button id="cBk">☁ Drive backup</button>`) +
+    `<button class="btn-p" id="cQuick">⌬ NCRP trail only</button><button class="btn-p" id="cNew">＋ New case</button><button id="cImp">⇪ Import case package</button><button id="cDemo">▶ Load demo case</button><button id="cBk">☁ Drive backup</button>`) +
     `<div id="cList"></div>`;
   const rows = S.index.slice().sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
   const tc = r => r.demo ? '#ffb300' : /closed/i.test(r.status) ? '#8fb3c9' : /charge/i.test(r.status) ? '#00ff9d' : '#00e5ff';
   $('#cList', el).innerHTML = rows.length ? `<div class="tiles">${rows.map(r => `<div class="card tile" style="--pc:${tc(r)}" data-open="${esc(r.id)}"><div class="pulse"></div>
-      <div class="tile-h"><div class="hexi" style="--pc:${tc(r)};width:46px;height:46px">${icon('folder')}</div><div style="min-width:0"><b>${esc(r.crimeNo || r.id)}</b><small>${esc(r.id)} · ${esc(r.ps || '')}</small></div></div>
-      <div class="row" style="margin-top:10px;gap:6px">${badge(r.type || 'Case', 'cyan')} ${badge(r.status || '', /closed/i.test(r.status) ? 'gray' : 'green')} ${r.demo ? badge('DEMO', 'amber') : ''}</div>
+      <div class="tile-h"><div class="hexi" style="--pc:${tc(r)};width:46px;height:46px">${icon('folder')}</div><div style="min-width:0"><b>${esc(caseTitle(r))}</b><small>${esc(r.id)} · ${esc(r.ps || '')}</small></div></div>
+      <div class="row" style="margin-top:10px;gap:6px">${r.mode === 'ncrp' ? badge('NCRP TRAIL', 'green') : badge(r.type || 'Case', 'cyan')} ${r.mode === 'ncrp' ? '' : badge(r.status || '', /closed/i.test(r.status) ? 'gray' : 'green')} ${r.demo ? badge('DEMO', 'amber') : ''}</div>
       <div class="tile-stats"><div><span>Accounts</span><b>${nfmt(r.accts)}</b></div><div><span>Txns</span><b>${nfmt(r.txns)}</b></div><div><span>CDR</span><b>${nfmt(r.cdr)}</b></div><div><span>IO</span><b style="font-size:12px;font-family:var(--font)">${esc((r.io || '—').slice(0, 14))}</b></div></div>
       <div class="when"><span>☁ ${esc(r.lastBackup || 'not backed up')}</span><span class="row" style="gap:6px"><button class="btn-sm" data-data="${esc(r.id)}" title="Manage or delete uploaded data">🗂 Data</button><button class="btn-sm btn-d" data-del="${esc(r.id)}" title="Delete this case and all its data">🗑 Delete</button></span></div></div>`).join('')}</div>` : emptyState('No cases yet. Create a case or load the demo case to explore the system.');
   $$('[data-data]', el).forEach(b => b.onclick = async e => { e.stopPropagation(); if (!S.cur || S.cur.meta.id !== b.dataset.data) { await openCase(b.dataset.data); renderShell(); } caseDataManager(); });
   $$('[data-open]', el).forEach(b => b.onclick = async () => { await openCase(b.dataset.open); renderShell(); go('dashboard'); });
   $$('[data-del]', el).forEach(b => b.onclick = e => { e.stopPropagation(); confirmDeleteCase(b.dataset.del); });
   $('#cNew', el).onclick = () => caseForm();
+  $('#cQuick', el).onclick = async () => { await saveNow(); S.cur = null; S.derived = null; renderShell(); go('start'); };
   $('#cDemo', el).onclick = async () => { if (S.index.some(x => x.id === 'DEMO-CASE')) { await openCase('DEMO-CASE'); } else { toast('Generating synthetic demo case…'); await tick(); await buildDemoCase(); } renderShell(); go('dashboard'); };
   $('#cBk', el).onclick = () => go('backup');
   $('#cImp', el).onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.enc'; i.onchange = async () => { try { const buf = await i.files[0].arrayBuffer(); const v = await promptBox('Decrypt package', [{ label: 'Passphrase used when the package was created, or your Backup Key (leave empty to use your current vault)', type: 'password' }, { label: 'Restore as Case ID (optional, to avoid clashes)' }], 'Decrypt & restore'); if (!v) return; const pkg = await Vault.unpack(buf, v[0] || null); await restorePackage(pkg, v[1].trim() || null); toast('Case restored', 'ok'); renderShell(); go('dashboard'); } catch (e) { toast(e.message, 'err'); } }; i.click(); };
@@ -23,6 +24,7 @@ function caseForm(existing) {
   const body = `<div class="grid g2">
     <label class="f">Case ID *<input id="f_id" value="${esc(m.id || '')}" ${existing ? 'disabled' : ''} placeholder="e.g. CASE-37-2026"></label>
     <label class="f">FIR / Crime Number<input id="f_crime" value="${esc(m.crimeNo || '')}" placeholder="Cr. No. 37/2026"></label>
+    <label class="f" style="grid-column:1/-1">Petitioner / complainant name (optional — shown in the letters)<input id="f_pet" value="${esc(m.petitioner || '')}" placeholder="Name of the petitioner"></label>
     <label class="f">Police Station<input id="f_ps" value="${esc(m.ps || '')}" placeholder="Police station"></label>
     <label class="f">District<input id="f_dist" value="${esc(m.district || 'Ernakulam')}"></label>
     <label class="f">Investigating Officer<input id="f_io" value="${esc(m.io || '')}"></label>
@@ -38,7 +40,7 @@ function caseForm(existing) {
   $('[data-s]', md.el).onclick = async () => {
     const v = id => $('#' + id, md.el).value.trim(); const id = existing ? m.id : v('f_id').replace(/[^\w\-\/. ]/g, '').trim();
     if (!id) return toast('Case ID required', 'warn'); if (!existing && S.index.some(x => x.id === id)) return toast('Case ID already exists', 'warn');
-    const meta = { id, crimeNo: v('f_crime'), ps: v('f_ps'), district: v('f_dist'), io: v('f_io'), type: v('f_type'), regDate: v('f_reg'), status: v('f_st'), conf: v('f_conf'), remarks: v('f_rem'), sections: v('f_sec'), charges: v('f_chg') };
+    const meta = { id, crimeNo: v('f_crime'), petitioner: v('f_pet'), ps: v('f_ps'), district: v('f_dist'), io: v('f_io'), type: v('f_type'), regDate: v('f_reg'), status: v('f_st'), conf: v('f_conf'), remarks: v('f_rem'), sections: v('f_sec'), charges: v('f_chg') };
     if (existing) { Object.assign(S.cur.meta, meta); markDirty('meta'); await audit('Edited case details', JSON.stringify(meta).slice(0, 300)); md.close(); renderShell(); go('dashboard'); }
     else { await createCase(meta); md.close(); renderShell(); go('upload'); toast('Case created. Upload the statements, NCRP report and CDRs.', 'ok'); }
   };

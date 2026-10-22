@@ -2,7 +2,7 @@
    One notice per recipient (bank, card issuer, wallet / UPI app, telecom operator, ISP), filled
    automatically from the NCRP trail and the bank statements. Output: on-screen preview, PDF and
    Word (.docx) with the station letterhead and a coloured footer band.                         */
-const LET = { done: {}, type: 'bank_basic', src: 'all', bank: '', layer: 0, acct: '', s106: false, sel: '', focus: '', excl: new Set() };
+const LET = { zoom: 0, done: {}, type: 'bank_basic', src: 'all', bank: '', layer: 0, acct: '', s106: false, sel: '', focus: '', excl: new Set() };
 const LET_CODE = { bank_basic: 'B94', freeze: 'F106', atm_cctv: 'ATM', cheque: 'CHQ', pos: 'POS', pg_wallet: 'UPI', tsp_cdr: 'CDR', isp_ipdr: 'IPDR' };
 /* Wording follows the station's sample notice. Markup: blank line = new paragraph, **bold**, *italic*,
    lines starting with "1." or "-" = numbered list, [[TABLE]] = where the account / transaction table goes. */
@@ -203,11 +203,16 @@ function letterDoc(type, rec, rows, n) {
   const lh = letterHead(); const m = S.cur.meta; const tp = LET_TYPES[type]; const cu = tplOf(type);
   const tsList = rows.map(r => r.from || r.ts).filter(x => x && isFinite(x)); const first = tsList.length ? Math.min(...tsList) : null;
   const fraud = (S.cur.work.ncrp.length ? ncrpModel().fraud : 0) || sum(D().seeds || [], s => s.dr || 0);
-  const crime = String(m.crimeNo || m.id).replace(/^\s*(fir|crime|cr)\.?\s*(no\.?)?\s*/i, '');
+  const quickNoFir = isQuick(S.cur) && !m.crimeNo;
+  const crime = quickNoFir ? '__________' : String(m.crimeNo || m.id).replace(/^\s*(fir|crime|cr)\.?\s*(no\.?)?\s*/i, '');
   const today = Date.now() + 5.5 * 3600000; const reg = /^\d{4}-\d{2}-\d{2}$/.test(m.regDate || '') ? m.regDate.split('-').reverse().join('/') : '__________';
   const v = { bank: rec, crimeNo: crime, firDate: reg, agency: lh.agency, sections: m.sections || '318(4) and 319(2) of the Bharatiya Nyaya Sanhita, 2023 and 66(C), 66(D) of the Information Technology Act, 2000', charges: m.charges || 'Cheating and dishonestly inducing delivery of property and Cheating by personation',
     caseType: m.type || 'cyber fraud', fraudAmount: fraud ? inr(fraud) : 'the amount mentioned in the complaint', fromDate: dmy(first ? first - 30 * 864e5 : today - 30 * 864e5), toDate: dmy(today), date: dmy(today), s94: S94_QUOTE, s106: LET.s106 && type !== 'freeze' ? S106 : '', ps: lh.agency };
   v.common = fillTpl(LET_COMMON, v);
+  if (quickNoFir) { // NCRP-trail only: no FIR yet, so the opening refers to the portal complaint instead
+    const ack = String(m.ack || '').trim(); const pet = String(m.petitioner || '').trim();
+    v.common = fillTpl('{{agency}} is a Law Enforcement Agency of the Home Department of the Government of Kerala, India.\n\n{{s94}}\n\n{{agency}} is investigating a cyber financial fraud complaint registered on the National Cyber Crime Reporting Portal' + (ack ? ' bearing Acknowledgement Number **' + ack + '**' : '') + (pet ? ', lodged by **' + pet + '**' : '') + ', for the offence of **{{charges}}**.', v);
+  }
   const blocks = []; let tableAt = false;
   for (const para of fillTpl(fillTpl(cu.body || tp.body, v), v).split(/\n\s*\n/)) {
     const lines = para.split('\n').map(x => x.trim()).filter(Boolean); if (!lines.length) continue;
@@ -328,11 +333,11 @@ VIEWS.letters = async el => {
   if (!LET.sel || !recs.includes(LET.sel)) LET.sel = recs.find(r => !done.has(r)) || recs[0] || '';
   const idx = recs.indexOf(LET.sel); const docs = LET.sel ? [letterDoc(LET.type, LET.sel, G.get(LET.sel), idx + 1)] : [];
   const maxL = Math.max(0, ...S.cur.accts.map(a => acctLayer(a.id) || 0), ...S.cur.work.ncrp.map(r => (r.layer || 0) + 1));
-  const cats = [['Bank', ['bank_basic', 'freeze']], ['Cash-out', ['atm_cctv', 'cheque']], ['Entities', ['pos', 'pg_wallet']], ['Telecom / IP', ['tsp_cdr', 'isp_ipdr']]];
-  el.innerHTML = pageHead('94 BNSS Letters', 'Notices filled automatically from the NCRP trail and bank statements — one letter per bank, card issuer, UPI app / wallet or operator. Download as Word or PDF with the station letterhead.') +
-    `<div class="let-types">${cats.map(([g, ks]) => `<div class="lt-g"><div class="small dim">${g}</div>${ks.map(k => `<button class="${LET.type === k ? 'on' : ''}" data-lt="${k}">${esc(LET_TYPES[k].t)}<span>${k === LET.type ? recs.length : ''}</span></button>`).join('')}</div>`).join('')}</div>
-    <div class="let-wrap"><div class="let-paper" id="lPaper">${docs.length ? docs.map(letterHtml).join('<div class="pgbrk"></div>') : `<div class="letter-page">${emptyState('No data for this letter type with the current filters.' + (LET.type === 'atm_cctv' ? ' ATM withdrawals come from the NCRP report and ATM narrations in statements.' : LET.type === 'cheque' ? ' Cheque withdrawals come from the NCRP report (action: cheque) and cheque debits in statements.' : ''))}</div>`}</div>
+  if (!['bank_basic', 'freeze'].includes(LET.type)) { LET.type = 'bank_basic'; LET.sel = ''; } // bank notices only
+  el.innerHTML = `<div class="let-top"><h2>94 BNSS Letters</h2><div class="let-types">${['bank_basic', 'freeze'].map(k => `<button class="${LET.type === k ? 'on' : ''}" data-lt="${k}">${esc(LET_TYPES[k].t)}<span>${k === LET.type ? recs.length : ''}</span></button>`).join('')}</div></div>
+    <div class="let-wrap"><div class="let-main"><div class="let-bar"><span class="small dim">Zoom</span><button class="btn-sm" id="zOut" title="Smaller">−</button><b id="zVal" class="mono">${Math.round((LET.zoom || 1) * 100)}%</b><button class="btn-sm" id="zIn" title="Larger">+</button><button class="btn-sm" id="zPage">Fit page</button><button class="btn-sm" id="zFit">Fit width</button><button class="btn-sm" id="z100">100%</button><span class="small dim" style="margin-left:auto">You can type on the letter before copying.</span></div><div class="let-paper" id="lPaper" style="--lz:${LET.zoom || 1}">${docs.length ? docs.map(letterHtml).join('<div class="pgbrk"></div>') : `<div class="letter-page">${emptyState('No data for this letter type with the current filters.' + (LET.type === 'atm_cctv' ? ' ATM withdrawals come from the NCRP report and ATM narrations in statements.' : LET.type === 'cheque' ? ' Cheque withdrawals come from the NCRP report (action: cheque) and cheque debits in statements.' : ''))}</div>`}</div></div>
     <div class="let-side card">
+      ${isQuick(S.cur) ? `<div class="let-q"><div class="small dim">NCRP trail · no case details needed</div><label class="f">Petitioner name <span class="dim">(optional)</span><input id="lPet" value="${esc(S.cur.meta.petitioner || '')}"></label><label class="f">FIR / Crime No. <span class="dim">(optional)</span><input id="lFir" value="${esc(S.cur.meta.crimeNo || '')}" placeholder="leave blank if not registered"></label></div>` : ''}
       <h3>Letter ${recs.length ? idx + 1 : 0} of ${recs.length} <span class="small dim">· ${done.size} done</span></h3>
       <div class="row" style="gap:6px"><button class="btn-sm" id="lPrev" ${idx <= 0 ? 'disabled' : ''}>◀</button><select id="lRec" style="flex:1;min-width:0">${recs.map(r => `<option value="${esc(r)}" ${LET.sel === r ? 'selected' : ''}>${done.has(r) ? '✓ ' : ''}${esc(r)} (${G.get(r).length})</option>`).join('')}</select><button class="btn-sm" id="lNext" ${idx < 0 || idx >= recs.length - 1 ? 'disabled' : ''}>▶</button></div>
       <div class="row" style="flex-wrap:wrap;margin-top:10px"><button class="btn-p" id="lDocx">⇩ Word (.docx)</button><button class="btn-p" id="lPdf">⇩ PDF</button><button class="btn-sm" id="lCopy">⧉ Copy</button></div>
@@ -354,8 +359,17 @@ VIEWS.letters = async el => {
       $$('[data-lcp]', box).forEach(a => a.onclick = e => { e.preventDefault(); copyText(a.dataset.lcp); }); $('#lNodAll', box).onclick = () => copyText(em.join('; '), 'All e-mails of ' + o.name); }
     const g = $('#lNodGo', box); if (g) g.onclick = e => { e.preventDefault(); NDL.q = o ? o.name : LET.sel.replace(/\(.*?\)/g, '').trim(); NDL.cat = ''; go('nodal'); };
   })();
-  $$('[data-lt]', el).forEach(b => b.onclick = () => { LET.type = b.dataset.lt; LET.sel = ''; LET.excl = new Set(); go('letters'); });
+  $$('[data-lt]', el).forEach(b => b.onclick = () => { LET.type = b.dataset.lt; LET.sel = ''; LET.excl = new Set(); LET.zoom = 0; go('letters'); });
   $$('.letter-page', el).forEach(p => p.contentEditable = 'true');
+  const setZoom = z => { LET.zoom = Math.max(.3, Math.min(1.8, Math.round(z * 20) / 20)); const pp = $('#lPaper', el); if (pp) pp.style.setProperty('--lz', LET.zoom); const zv = $('#zVal', el); if (zv) zv.textContent = Math.round(LET.zoom * 100) + '%'; };
+  $('#zIn', el).onclick = () => setZoom(LET.zoom + .1); $('#zOut', el).onclick = () => setZoom(LET.zoom - .1); $('#z100', el).onclick = () => setZoom(1);
+  const fitW = () => { const pp = $('#lPaper', el); if (!pp) return 1; return (pp.clientWidth - 24) / 794; };
+  const fitP = () => { const pp = $('#lPaper', el); const pg = $('.letter-page', el); if (!pp || !pg) return 1; pp.style.setProperty('--lz', 1); const h = pg.offsetHeight || 1123; const top = pp.getBoundingClientRect().top; const availH = window.innerHeight - top - 16; return Math.min(fitW(), availH / (h + 8)); };
+  const setFit = f => { const z = Math.max(.3, Math.min(1.8, Math.floor(f() * 100) / 100)); LET.zoom = z; const pp = $('#lPaper', el); if (pp) pp.style.setProperty('--lz', z); const zv = $('#zVal', el); if (zv) zv.textContent = Math.round(z * 100) + '%'; };
+  $('#zFit', el).onclick = () => setFit(fitW); $('#zPage', el).onclick = () => setFit(fitP);
+  if (!LET.zoom) requestAnimationFrame(() => setFit(fitP)); else if (LET.zoom === -1) setFit(fitP);
+  const qsave = async () => { const m = S.cur.meta; m.petitioner = ($('#lPet', el).value || '').trim(); m.crimeNo = ($('#lFir', el).value || '').trim(); markDirty('meta'); const i = S.index.findIndex(x => x.id === m.id); if (i >= 0) S.index[i] = caseSummary(S.cur); renderShell(); go('letters'); };
+  if ($('#lPet', el)) { $('#lPet', el).onchange = qsave; $('#lFir', el).onchange = qsave; }
   $('#lRec', el).onchange = e => { LET.sel = e.target.value; go('letters'); };
   $('#lPrev', el).onclick = () => { LET.sel = recs[idx - 1]; go('letters'); }; $('#lNext', el).onclick = () => { LET.sel = recs[idx + 1]; go('letters'); };
   const markDone = () => { done.add(LET.sel); const nx = recs.find((r, i) => i > idx && !done.has(r)); setTimeout(() => { if (nx) { LET.sel = nx; toast('Saved. Next: ' + nx, 'ok'); } else toast('All letters of this type done', 'ok'); go('letters'); }, 900); };

@@ -140,7 +140,7 @@ VIEWS.ncrp = async el => {
   if (!c.work.ncrp.length) {
     el.innerHTML = pageHead('NCRP Graph', 'Money trail straight from the NCRP (I4C) transaction report — layers, onward transfers, ATM / cheque / AEPS cash-outs and put-on-hold amounts.') +
       `<div class="card">${emptyState('No NCRP report imported in this case yet.<br><span class="small dim">Download the transaction details Excel of the complaint from the NCRP / I4C portal and import it here. Several acknowledgement numbers can be imported into one case.</span>', `<button class="btn-p" id="nImp">⇪ Import NCRP report</button>`)}</div>`;
-    $('#nImp', el).onclick = () => go('up_ncrp'); return;
+    $('#nImp', el).onclick = () => go(isQuick(c) ? 'start' : 'up_ncrp'); return;
   }
   const m = ncrpModel(); const all = Array.from(m.N.values()); const accts = all.filter(n => !n.exit && !n.unknown && n.layer !== 0);
   const actSum = k => round2(sum(m.H.filter(h => h.kind === 'cash' && h.action === k), h => h.amount));
@@ -151,8 +151,8 @@ VIEWS.ncrp = async el => {
   const byLayer = ncrpLayers(m);
   const layersSorted = Array.from(byLayer.keys()).sort((a, b) => a - b);
   const issuesN = m.issues.orphan.length + m.issues.assumed.length;
-  el.innerHTML = pageHead('NCRP Graph', 'Layer-wise money trail from the NCRP / I4C report. Click any account box or amount on an arrow for date, time, UTR and branch details.', `<button id="nImp">⇪ Import NCRP</button><button id="nXl">⇩ Export trail</button><button class="btn-p" id="nLet">✉ Letters for these banks</button>`) +
-    `<div class="grid g6" style="margin-bottom:14px">
+  el.innerHTML = pageHead('NCRP Graph', 'Layer-wise money trail from the NCRP / I4C report. Click any account box or amount on an arrow for date, time, UTR and branch details.', `<button id="nImp">${isQuick(c) ? '⇪ Upload / change NCRP file' : '⇪ Import NCRP'}</button><button id="nXl">⇩ Export trail</button><button class="btn-p" id="nLet">✉ Letters for these banks</button>`) +
+    `<div class="grid g6 ncrp-kpis" style="margin-bottom:22px">
       ${kpi('Fraud amount', inrShort(m.fraud), `${nfmt(m.disputedN)} disputed transaction(s)`, 'rgba(255,77,94,.35)')}
       ${kpi('Amount on hold', inrShort(holdTot), m.fraud ? Math.round(holdTot / m.fraud * 100) + '% of fraud amount' : '', 'rgba(255,179,0,.35)')}
       ${kpi('Onward transfers', nfmt(transfers.length), inrShort(sum(transfers, h => h.amount)) + ' moved to next layers', 'rgba(0,229,255,.3)')}
@@ -171,7 +171,7 @@ VIEWS.ncrp = async el => {
     </div></div>
     <div id="nGraph" style="margin-bottom:14px"></div>
     <div class="card"><div class="tabs" id="nTabs">${[['trail', 'Money trail (hop by hop)'], ['map', 'Map (by IFSC)'], ['layers', 'Layer summary'], ['banks', 'Bank summary'], ['check', 'Report check' + (issuesN ? ' ⚠' : '')], ['rows', 'NCRP rows']].map(([k, t]) => `<button data-t="${k}" class="${NCRPF.tab === k ? 'on' : ''}">${esc(t)}</button>`).join('')}</div><div id="nTab"></div></div>`;
-  $('#nImp', el).onclick = () => go('up_ncrp');
+  $('#nImp', el).onclick = () => go(isQuick(c) ? 'start' : 'up_ncrp');
   $('#fAck', el).onchange = e => { NCRPF.ack = e.target.value; go('ncrp'); };
   $('#fL', el).onchange = e => { NCRPF.maxL = +e.target.value; go('ncrp'); };
   $('#fB', el).onchange = e => { NCRPF.bank = e.target.value; go('ncrp'); };

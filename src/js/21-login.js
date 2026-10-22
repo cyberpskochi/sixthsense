@@ -56,7 +56,7 @@ function showLogin(msg = '', kind = 'notice') {
 }
 async function afterUnlock() {
   if (S.access) { const bz = $('#vBusy'); if (bz) bz.textContent = 'Verifying access…'; try { await S.access; } catch { Vault.lock && Vault.lock(); return; } }
-  await loadIndex(); S.lastActivity = Date.now(); S.view = 'cases'; renderShell(); go('cases');
+  await loadIndex(); S.lastActivity = Date.now(); S.view = 'start'; renderShell(); go('start');
   if (isAdmin() && Backend.on()) Backend.call('listUsers').then(r => { ADM.users = r.users || []; ADM.pending = ADM.users.filter(u => u.status === 'pending').length; ADM.mainAdmin = r.mainAdmin || ''; renderNav(); if (ADM.pending) toast(`${ADM.pending} user(s) waiting for approval — see Users & Access`, 'warn', 7000); }).catch(() => {});
 }
 async function showVaultScreen(msg = '', noRecall = false) {

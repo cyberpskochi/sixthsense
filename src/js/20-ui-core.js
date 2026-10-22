@@ -2,12 +2,12 @@
 const SERIES = ['#2f9bff', '#ff6e40', '#00d98b', '#ffb300', '#ff2e88', '#008300', '#b388ff', '#ff4d5e']; // validated on dark surface #0f1b31
 /* Three working groups (drop-down) + system links at the bottom. '-' = divider inside a group. */
 const NAV = [
-  ['UPLOAD', 'upload', '#00ff9d', [['up_ncrp', 'tree', 'NCRP Trail'], ['up_bank', 'bank', 'Bank Accounts'], ['up_cdr', 'phone', 'CDR'], ['up_ip', 'globe', 'Bank Login IP & IP Lookup'], '-', ['import', 'folder', 'Other data (KYC · IPDR · SMS)'], ['quality', 'shield', 'Data Quality']]],
+  ['UPLOAD', 'upload', '#00ff9d', [['start', 'upload', 'NCRP Trail'], ['caseup', 'folder', 'Case Upload'], '-', ['up_ncrp', 'tree', 'Case · NCRP report'], ['up_bank', 'bank', 'Case · Bank Accounts'], ['up_cdr', 'phone', 'Case · CDR'], ['up_ip', 'globe', 'Case · Bank Login IP & IP Lookup'], ['import', 'folder', 'Other data (KYC · IPDR · SMS)'], ['quality', 'shield', 'Data Quality']]],
   ['ANALYSIS', 'bolt', '#ffb300', [['dashboard', 'grid', 'Dashboard'], ['verify', 'check', 'Money Trail Verification'], ['ncrp', 'tree', 'NCRP Graph'], ['cdrday', 'pin', 'CDR & Location Analysis'], ['dormant', 'clock', 'Dormant & Freeze Checks'], ['entities', 'users', 'Entities · UPI · POS'], ['leads', 'flag', 'Leads'], ['intel', 'bolt', 'Key Findings'], '-',
     ['geo', 'pin', 'IFSC & ATM Map'], ['network', 'nodes', 'Network Graph'], ['trail', 'flow', 'Statement Trail'], ['accounts', 'bank', 'Accounts'], ['txns', 'list', 'Transactions'], ['telecom', 'phone', 'Telecom (advanced)'], ['ip', 'globe', 'IP Intelligence'], ['correlation', 'clock', 'Correlation'], ['patterns', 'chart', 'Patterns / NDPS']]],
   ['REPORTS', 'doc', '#00e5ff', [['letters', 'letter', '94 BNSS Letters'], ['reports', 'doc', 'Reports & Export'], ['requisitions', 'mail', 'Requisitions'], ['tasks', 'check', 'Tasks']]]
 ];
-const NAV_TOP = [['hash', 'shield', 'HASH GENERATOR', '#b48cff'], ['nodal', 'phone', 'NODAL OFFICERS', '#34d399']]; // top-level headings that open directly
+const NAV_TOP = [['hash', 'shield', 'HASH GENERATOR', '#b48cff'], ['nodal', 'phone', 'NODAL OFFICERS', '#34d399'], ['pdf', 'doc', 'PDF TOOLS', '#ff8a65']]; // top-level headings that open directly
 const NAV_SYS = [['cases', 'folder', 'Cases', '#2979ff'], ['backup', 'cloud', 'Drive Backup', '#2979ff'], ['users', 'ushield', 'Users & Access', '#ff2e88', 'admin'], ['settings', 'gear', 'Settings', '#8fb3c9']];
 const NAV_BY = Object.fromEntries(NAV.flatMap(([g, ic, col, items]) => items.filter(x => x !== '-').map(x => [x[0], [x[0], x[1], x[2], col, g]])).concat(NAV_SYS.map(x => [x[0], x])).concat(NAV_TOP.map(x => [x[0], x])));
 NAV_BY.upload = NAV_BY.up_ncrp;
@@ -30,10 +30,10 @@ function renderShell() {
   ${c && c.meta.demo ? '<div class="demo-banner">DEMO DATA — NOT REAL INVESTIGATION DATA</div>' : ''}
   <div class="layout">
     <header class="top">
-      <button class="btn-g btn-sm" id="menuBtn" style="display:none">☰</button>
+      <button class="btn-g btn-sm" id="menuBtn" style="display:none">☰</button><button class="btn-g btn-sm" id="navToggle" title="Collapse the menu for more room">⇔</button>
       <span class="brand-mark"><svg viewBox="0 0 64 64" class="logoSvg"></svg></span>
       <div class="tb-title"><span class="tb-name">SIXTH SENSE</span><small>See Beyond the Data · Detect. Analyse. Act.</small></div>
-      <div class="case-pill"><span>${c ? esc(c.meta.conf) + ' · ' + esc(c.meta.type) : 'No case open'}</span><b>${c ? esc(c.meta.crimeNo || c.meta.id) + (c.meta.ps ? ' — ' + esc(c.meta.ps) : '') : 'Select or create a case'}</b></div>
+      <div class="case-pill"><span>${c ? (isQuick(c) ? 'NCRP trail only' : esc(c.meta.conf) + ' · ' + esc(c.meta.type)) : 'No case open'}</span><b>${c ? esc(caseTitle(c.meta)) + (c.meta.ps ? ' — ' + esc(c.meta.ps) : '') : 'Select or create a case'}</b></div>
       <div class="search"><input id="gsearch" placeholder="Search account, mobile, UPI, UTR, IP, IMEI, name…" ${c ? '' : 'disabled'}></div>
       <span class="grow"></span>
       <span class="chip on hide-s" title="Case data is encrypted in this browser"><span class="dot"></span>AES-256</span>
@@ -49,34 +49,45 @@ function renderShell() {
     </aside>
     <main class="main"><div class="content" id="content"></div></main>
   </div>`;
-  paintLogos(app); renderNav();
+  paintLogos(app); renderNav(); applyNavMode();
+  $('#navToggle').onclick = () => { const lay = $('.layout'); S.navPref = lay && lay.classList.contains('slim') ? 'full' : 'slim'; applyNavMode(); };
   $('#lockBtn').onclick = () => lockApp('Locked by user');
   $('#outBtn').onclick = () => signOut('Signed out');
   $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
   const gs = $('#gsearch'); if (gs) gs.addEventListener('keydown', e => { if (e.key === 'Enter' && gs.value.trim()) globalSearch(gs.value.trim()); });
 }
 function renderNav() {
-  const c = S.cur; const FREE = ['cases', 'settings', 'backup', 'users', 'nodal', 'hash'];
+  const c = S.cur; const FREE = ['start', 'caseup', 'cases', 'settings', 'backup', 'users', 'nodal', 'hash', 'pdf'];
+  const quick = isQuick(c); const QUICK_OK = ['start', 'caseup', 'ncrp', 'letters', 'pdf']; // an NCRP-trail-only session shows just these
+  const groups = NAV.map(([g, ic, col, items]) => [g, ic, col, quick ? items.filter(x => x !== '-' && QUICK_OK.includes(x[0])) : items]).filter(x => x[3].length);
   const cnt = { up_ncrp: c && c.work.ncrp.length ? nfmt(c.work.ncrp.length) : '', up_bank: c ? c.accts.filter(a => (IX.txByAcct.get(a.id) || []).length).length + '/' + c.accts.length : '', up_cdr: c && c.telecom.cdr.length ? uniq(c.telecom.cdr.map(r => r.target)).length : '', up_ip: c && c.ip.logs.length ? nfmt(c.ip.logs.length) : '', accounts: c ? c.accts.length : '', txns: c ? nfmt(c.txns.length) : '', users: isAdmin() && ADM.pending ? ADM.pending + ' new' : '', leads: '' };
-  const cur = NAV_BY[S.view === 'upload' ? 'up_ncrp' : S.view]; if (cur && cur[4] && NAVOPEN[cur[4]] === undefined) NAVOPEN[cur[4]] = true;
+  const cur = NAV_BY[S.view === 'upload' ? 'caseup' : S.view]; if (cur && cur[4] && NAVOPEN[cur[4]] === undefined) NAVOPEN[cur[4]] = true;
   if (!Object.keys(NAVOPEN).length) NAVOPEN.UPLOAD = true;
-  const link = (k, ic, t, col) => `<a data-v="${k}" class="${S.view === k ? 'on' : ''}${!c && !FREE.includes(k) ? ' needcase' : ''}" title="${!c && !FREE.includes(k) ? 'Open a case first' : esc(t)}" style="--pc:${col}">${icon(ic)}<span>${t}</span>${cnt[k] ? `<span class="cnt">${cnt[k]}</span>` : ''}</a>`;
-  $('#nav').innerHTML = NAV.map(([g, ic, col, items]) => `<div class="ngrp ${NAVOPEN[g] ? 'open' : ''}" style="--pc:${col}"><button class="nhead" data-g="${g}">${icon(ic)}<span>${g}</span><i class="chev">▾</i></button>
-      <div class="nitems">${items.map(x => x === '-' ? '<div class="ndiv">More tools</div>' : link(x[0], x[1], x[2], col)).join('')}</div></div>`).join('') +
+  const link = (k, ic, t, col) => `<a data-v="${k}" class="${S.view === k || (k === 'caseup' && S.view === 'upload') ? 'on' : ''}${!c && !FREE.includes(k) ? ' needcase' : ''}" title="${!c && !FREE.includes(k) ? 'Open a case first' : esc(t)}" style="--pc:${col}">${icon(ic)}<span>${t}</span>${cnt[k] ? `<span class="cnt">${cnt[k]}</span>` : ''}</a>`;
+  $('#nav').innerHTML = groups.map(([g, ic, col, items]) => `<div class="ngrp ${NAVOPEN[g] ? 'open' : ''}" style="--pc:${col}"><button class="nhead" data-g="${g}" title="${g}">${icon(ic)}<span>${g}</span><i class="chev">▾</i></button>
+      <div class="nitems">${items.map(x => x === '-' ? `<div class="ndiv">${g === 'UPLOAD' ? 'Case upload steps' : 'More tools'}</div>` : link(x[0], x[1], x[2], col)).join('')}</div></div>`).join('') +
     NAV_TOP.map(([k, ic, t, col]) => `<div class="ngrp" style="--pc:${col}"><button class="nhead ntop ${S.view === k ? 'on' : ''}" data-top="${k}">${icon(ic)}<span>${t}</span></button></div>`).join('') +
     `<div class="nsys">${NAV_SYS.filter(x => x[4] !== 'admin' || isAdmin()).map(([k, ic, t, col]) => link(k, ic, t, col)).join('')}</div>`;
   $$('#nav [data-top]').forEach(b => b.onclick = () => { $('#side').classList.remove('open'); go(b.dataset.top); });
   $$('#nav .nhead:not([data-top])').forEach(b => b.onclick = () => { NAVOPEN[b.dataset.g] = !NAVOPEN[b.dataset.g]; renderNav(); });
   $$('#nav a').forEach(a => a.onclick = () => { $('#side').classList.remove('open'); go(a.dataset.v); });
 }
+/* The side menu shrinks to icons on the letter and graph pages (more room for the letter / graph); the ⇔ button overrides. */
+function applyNavMode() {
+  const lay = $('.layout'); if (!lay) return;
+  const slim = S.navPref ? S.navPref === 'slim' : ['letters', 'ncrp'].includes(S.view);
+  lay.classList.toggle('slim', slim);
+  const b = $('#navToggle'); if (b) b.title = slim ? 'Show the full menu' : 'Collapse the menu for more room';
+}
 function go(view, arg) {
   if (!Libs.done) { const el = $('#content'); if (el) el.innerHTML = `<div class="empty" style="margin-top:60px"><div class="spin"></div>Loading analysis modules…</div>`; Libs.load().then(() => go(view, arg)); return; }
-  const FREE = ['cases', 'settings', 'backup', 'users', 'nodal', 'hash'];
+  const FREE = ['start', 'caseup', 'cases', 'settings', 'backup', 'users', 'nodal', 'hash', 'pdf'];
+  if (view === 'upload' || view === 'caseup') view = S.cur && !isQuick(S.cur) ? 'upload' : (view === 'caseup' ? 'caseup' : 'start'); // an open full case shows the complete upload centre
+  if (view === 'dashboard' && isQuick(S.cur)) view = S.cur.work.ncrp.length ? 'ncrp' : 'start';
   if (!S.cur && !FREE.includes(view)) { toast(S.index.length ? 'Open a case first: click a case tile below.' : 'No case yet: click “＋ New case” or “▶ Load demo case” first.', 'warn', 4500); view = 'cases'; setTimeout(() => $$('#cNew,#cDemo,.tile').forEach(b => { b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 2400); }), 50); }
   if (view === 'users' && !isAdmin()) { toast('Only an admin can manage users.', 'err'); view = S.cur ? 'dashboard' : 'cases'; }
-  if (view === 'upload') view = 'up_ncrp';
   if (view === 'dashboard' && S.cur && !S.cur.meta.demo && !S.cur.txns.length && !S.cur.work.ncrp.length && !S.cur.telecom.cdr.length) view = 'up_ncrp';
-  S.view = view; S.viewArg = arg; killCharts(); renderNav();
+  S.view = view; S.viewArg = arg; killCharts(); renderNav(); applyNavMode();
   const el = $('#content'); el.scrollTop = 0; el.innerHTML = '';
   try { (VIEWS[view] || VIEWS.dashboard)(el, arg); }
   catch (e) { console.error(e); el.innerHTML = `<div class="notice err">This view failed to render: ${esc(e.message)}</div>`; }
@@ -84,7 +95,7 @@ function go(view, arg) {
 function pageHead(title, sub, actions = '') {
   const nv = NAV_BY[S.view] || ['', 'grid', '', '#00e5ff'];
   if (nv[4] === 'ANALYSIS' && S.cur) actions += `<button class="btn-sm" data-ptask="${esc(title)}" title="Add an investigation task from this page">＋ Task</button>`;
-  return `<div class="crumb">${esc(S.cur ? (S.cur.meta.crimeNo || S.cur.meta.id) : CONFIG.APP_NAME)} › ${esc(title)}</div><div class="pagehead"><div class="ph"><div class="hexi" style="--pc:${nv[3]}">${icon(nv[1])}</div><div><h2>${esc(title)}</h2>${sub ? `<p>${sub}</p>` : ''}</div></div><div class="row no-print">${actions}</div></div>`;
+  return `<div class="crumb">${esc(S.cur ? caseTitle(S.cur.meta) : CONFIG.APP_NAME)} › ${esc(title)}</div><div class="pagehead"><div class="ph"><div class="hexi" style="--pc:${nv[3]}">${icon(nv[1])}</div><div><h2>${esc(title)}</h2>${sub ? `<p>${sub}</p>` : ''}</div></div><div class="row no-print">${actions}</div></div>`;
 }
 function kpi(label, value, sub = '', color = 'rgba(0,229,255,.3)') {
   const m = String(color).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/); const solid = m ? `rgb(${m[1]},${m[2]},${m[3]})` : color;
