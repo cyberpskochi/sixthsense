@@ -38,13 +38,38 @@ async function refKeyChecked(keyB64) {
     if (fp !== REF_KEY_FP) throw new Error(`Key mismatch: REF_KEY in Apps Script (fingerprint ${fp}) is not the key this version of the app needs (fingerprint ${REF_KEY_FP}). Paste the key from the latest NEW_REF_KEY file into Apps Script → Script properties → REF_KEY and save, then sign out and sign in again. If you just uploaded to GitHub, wait for the green ✓ and press Ctrl + Shift + R.`); }
   return key;
 }
+/* ---- Kerala identification: 14 districts, spelling variants, and a resolver that works for every IFSC source
+   (built-in database, imported master, online lookup). The built-in database already carries a verified district per Kerala branch. */
+const KERALA_DISTRICTS = ['Thiruvananthapuram', 'Kollam', 'Pathanamthitta', 'Alappuzha', 'Kottayam', 'Idukki', 'Ernakulam', 'Thrissur', 'Palakkad', 'Malappuram', 'Kozhikode', 'Wayanad', 'Kannur', 'Kasaragod'];
+const KERALA_ALIAS = (() => { const A = { 0: 'thiruvananthapuram trivandrum trivandram thiruvanthapuram tvm', 1: 'kollam quilon', 2: 'pathanamthitta pathanamtitta pathanamthita', 3: 'alappuzha alleppey alapuzha alapuzzha alappuzzha', 4: 'kottayam', 5: 'idukki idukky',
+  6: 'ernakulam ernakulum eranakulam kochi cochin kochin', 7: 'thrissur trissur trichur thrisur', 8: 'palakkad palghat palakad', 9: 'malappuram malapuram mallappuram', 10: 'kozhikode calicut kozhikkode', 11: 'wayanad wynad waynad', 12: 'kannur cannur cannanore', 13: 'kasaragod kasargod kasaragode kasargode' };
+  const m = Object.create(null); for (const k in A) for (const w of A[k].split(' ')) m[w] = +k; return m; })();
+const KERALA_BANK_PREFIX = { KLGB: 1, KSBK: 1 }; // Kerala Gramin Bank, Kerala State Co-operative Bank — Kerala-only banks
+const KERALA_ROADW = new Set(['road', 'rd', 'r', 'junction', 'jn', 'bypass', 'highway', 'nh', 'bus', 'stand', 'market', 'main']);
+const keralaDistrictFromText = t => { const w = String(t || '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean); const f = new Set(); w.forEach((x, i) => { if (x in KERALA_ALIAS && !KERALA_ROADW.has(w[i + 1]) && !['to', 'towards', 'via', 'from'].includes(w[i - 1])) f.add(KERALA_ALIAS[x]); }); return f.size === 1 ? Array.from(f)[0] : -1; };
+/* info → { is: true | false | null (cannot tell), district: '' | name, how: why } */
+function keralaOf(info) {
+  if (!info) return { is: null, district: '', how: '' };
+  if (info.kdist) return { is: true, district: info.kdist, how: 'IFSC database' };
+  const st = String(info.state || '').trim().toLowerCase();
+  if (st === 'kerala') {
+    for (const t of [info.district, info.city]) { const i = keralaDistrictFromText(t); if (i >= 0) return { is: true, district: KERALA_DISTRICTS[i], how: 'district name' }; }
+    const kp = IFSCDB.doc && IFSCDB.doc.kpin; const pin = info.pincode || (String(info.address || '').match(/\b(6[789]\d)\s?(\d{3})\b/) || []).slice(1).join('');
+    if (kp && pin && kp[pin] != null) return { is: true, district: KERALA_DISTRICTS[kp[pin]], how: 'PIN ' + pin };
+    const i = keralaDistrictFromText((info.branch || '') + ' ' + (info.address || '')); if (i >= 0) return { is: true, district: KERALA_DISTRICTS[i], how: 'address' };
+    return { is: true, district: '', how: 'state' };
+  }
+  if (st) return { is: false, district: '', how: 'state' };
+  if (KERALA_BANK_PREFIX[String(info.ifsc || '').slice(0, 4)]) return { is: true, district: '', how: 'Kerala-only bank' };
+  return { is: null, district: '', how: '' };
+}
 /* Built-in IFSC branch database (public Razorpay IFSC data, ~1.24 lakh branches) — data/ifsc-db.bin, loaded in the
    background after sign-in and cached by the browser. Lookups work offline once loaded. */
 const IFSCDB = {
   doc: null, idx: null, loading: null, err: '',
   load() { if (this.doc || this.loading) return this.loading; this.loading = (async () => {
       try { const r = await fetch(CONFIG.IFSC_DB_URL, { cache: 'default', credentials: 'omit' }); if (!r.ok) throw new Error('IFSC database not found on the site (' + r.status + ')');
-        const d = JSON.parse(await gunzip(new Uint8Array(await r.arrayBuffer()))); const idx = new Map(); d.rows.forEach((row, i) => idx.set(row[0], i)); this.doc = d; this.idx = idx; this.err = '';
+        const d = JSON.parse(await gunzip(new Uint8Array(await r.arrayBuffer()))); const idx = new Map(); d.rows.forEach((row, i) => idx.set(row[0], i)); this.doc = d; this.idx = idx; this.err = ''; this._kn = 0; const kIdx = d.state.indexOf('Kerala'); for (const row of d.rows) if (row[10] >= 0 || row[5] === kIdx) this._kn++; this._kb = null;
         S.derived = null; if (S.cur) { try { S.cur.intel = null; } catch { } }
       } catch (e) { this.err = e.message; this.loading = null; console.warn('IFSC DB', e); } })(); return this.loading; },
   bankName(p) { return this.doc ? this.doc.banks[p] || '' : ''; },
@@ -56,12 +81,26 @@ const IFSCDB = {
     if (pin && d.pins[pin]) return { lat: d.pins[pin][0], lon: d.pins[pin][1], acc: 'PIN ' + pin };
     if (!this._dn) { this._dn = new Map(); (d.dist || []).forEach((n, i) => { if (d.dll && d.dll[i]) this._dn.set(String(n).toLowerCase().trim(), d.dll[i]); }); }
     for (const k of [inf.district, inf.city]) { const v = k && this._dn.get(String(k).toLowerCase().trim()); if (v) return { lat: v[0], lon: v[1], acc: 'district ' + k }; }
+    if (inf.kdist && d.kll) { const i = (d.kdist || KERALA_DISTRICTS).indexOf(inf.kdist); if (i >= 0 && d.kll[i]) return { lat: d.kll[i][0], lon: d.kll[i][1], acc: 'district ' + inf.kdist }; }
     return null;
   },
   get(code) { if (!this.idx) return null; const i = this.idx.get(code); if (i == null) return null; const r = this.doc.rows[i]; const d = this.doc;
     const pin = (String(r[2]).match(/\b(\d{3})\s?(\d{3})\b(?!.*\b\d{6}\b)/) || []).slice(1).join('');
-    return { ifsc: r[0], bank: d.banks[r[0].slice(0, 4)] || '', branch: r[1], address: r[2], city: r[3] >= 0 ? d.city[r[3]] : '', district: r[4] >= 0 ? d.dist[r[4]] : '', state: r[5] >= 0 ? d.state[r[5]] : (pin ? pinState(pin) : ''), micr: r[6], contact: r[7], pincode: pin, src: 'db' }; },
-  stats() { const d = this.doc; if (!d) return { rows: 0, banks: 0, created: '', text: this.err ? 'not loaded (' + this.err + ')' : this.loading ? 'loading…' : 'not loaded' }; const o = { rows: d.rows.length, banks: Object.keys(d.banks).length, created: d.created }; o.text = nfmt(o.rows) + ' branches · ' + nfmt(o.banks) + ' banks' + (o.created ? ' · built ' + o.created : ''); return o; }
+    return { ifsc: r[0], bank: d.banks[r[0].slice(0, 4)] || '', branch: r[1], address: r[2], city: r[3] >= 0 ? d.city[r[3]] : '', district: r[4] >= 0 ? d.dist[r[4]] : '', state: r[5] >= 0 ? d.state[r[5]] : (pin ? pinState(pin) : ''), micr: r[6], contact: r[7], pincode: pin, src: 'db',
+      flags: r[8] >= 0 ? { neft: !!(r[8] & 1), imps: !!(r[8] & 2), rtgs: !!(r[8] & 4), upi: !!(r[8] & 8) } : null, swift: r[9] || '', kdist: r[10] >= 0 ? (d.kdist || KERALA_DISTRICTS)[r[10]] : '' }; },
+  stats() { const d = this.doc; if (!d) return { rows: 0, banks: 0, created: '', text: this.err ? 'not loaded (' + this.err + ')' : this.loading ? 'loading…' : 'not loaded' }; const o = { rows: d.rows.length, banks: Object.keys(d.banks).length, created: d.created }; o.kerala = this._kn || 0; o.text = nfmt(o.rows) + ' branches · ' + nfmt(o.banks) + ' banks' + (o.kerala ? ' · ' + nfmt(o.kerala) + ' Kerala branches (district-wise)' : '') + (o.created ? ' · built ' + o.created : ''); return o; },
+  /* Kerala branch index for the finder: bank prefix × district counts and a row filter (rows are decoded only for the matches). */
+  kerala() { const d = this.doc; if (!d) return null; if (this._kb) return this._kb;
+    const cnt = new Map(); const list = []; const kIdx = d.state.indexOf('Kerala'); d.rows.forEach((r, i) => { if (r[10] >= 0 || r[5] === kIdx) { list.push(i); if (r[10] >= 0) { const k = r[0].slice(0, 4); let a = cnt.get(k); if (!a) { a = new Array(14).fill(0); cnt.set(k, a); } a[r[10]]++; } } });
+    this._kb = { list, cnt }; return this._kb; },
+  /* Branch search. opt: { kerala:true|false, kd:-1|0..13, bank:'' (prefix), q:'' }  → { rows:[info…], total } (max 500 decoded) */
+  find(opt) { const lim = opt.limit || 500; const d = this.doc; if (!d) return { rows: [], total: 0 }; const q = String(opt.q || '').trim().toUpperCase(); const out = []; let total = 0;
+    const src = opt.kerala ? this.kerala().list : null; const n = src ? src.length : d.rows.length;
+    for (let j = 0; j < n; j++) { const i = src ? src[j] : j; const r = d.rows[i];
+      if (opt.kd >= 0 && r[10] !== opt.kd) continue; if (opt.bank && r[0].slice(0, 4) !== opt.bank) continue;
+      if (q && !(r[0] + ' ' + r[1] + ' ' + r[2] + ' ' + r[6] + ' ' + (d.banks[r[0].slice(0, 4)] || '')).toUpperCase().includes(q)) continue;
+      total++; if (out.length < lim) out.push(this.get(r[0])); }
+    return { rows: out, total }; }
 };
 const GEO = {
   ifsc: new Map(), atm: new Map(), term: new Map(), ps: [], loaded: false, _t: null, online: false,
@@ -150,6 +189,20 @@ function caseIfscRows() {
   for (const r of c.work.ncrp) { if (r.ifsc) add(r.ifsc, { acct: r.acctNo, layer: r.layer, ncrp: r.amount || r.disputed, hold: r.hold, src: 'NCRP' }); if (r.toIfsc) add(r.toIfsc, { acct: r.toAcct, layer: r.layer != null ? r.layer + 1 : null, ncrp: r.amount, src: 'NCRP' }); }
   for (const f of d.flows) if (f.toExt && f.toExt.ifsc) add(f.toExt.ifsc, { acct: f.toExt.acctNo || f.toExt.upi, layer: f.layerFrom + 1, amount: f.amt, src: 'Narration' });
   return Array.from(m.values()).map(r => Object.assign(r, { info: GEO.info(r.ifsc), accts: Array.from(r.accts), layers: Array.from(r.layers).sort((a, b) => a - b), sources: Array.from(r.sources), amount: round2(r.amount), ncrpAmt: round2(r.ncrpAmt), hold: round2(r.hold) }));
+}
+/* Every account in the case (statement accounts + accounts seen only in the NCRP trail) with its branch, district and
+   Kerala flag — the basis of the bank-wise / district-wise Kerala lists. */
+function caseAccountGeoRows() {
+  const c = S.cur; const d = D(); const seen = new Map();
+  const add = (acctNo, o) => { const k = acctKey(acctNo); if (!k) return; let r = seen.get(k); if (!r) { r = { acctNo, ifsc: '', holder: '', bank: '', layer: null, amount: 0, stmt: false, role: '' }; seen.set(k, r); }
+    if (o.ifsc && !r.ifsc) r.ifsc = String(o.ifsc).toUpperCase().replace(/\s/g, ''); if (o.holder && !r.holder) r.holder = o.holder; if (o.bank && !r.bank) r.bank = o.bank; if (o.role && !r.role) r.role = o.role;
+    if (o.layer != null && (r.layer == null || o.layer < r.layer)) r.layer = o.layer; r.amount = Math.max(r.amount, o.amount || 0); if (o.stmt) r.stmt = true; };
+  for (const a of c.accts) { const res = d.acctRes.get(a.id); add(a.acctNo, { ifsc: a.ifsc, holder: a.holder, bank: a.bank, role: a.role, layer: acctLayer(a.id), amount: res ? res.tin : 0, stmt: !!a.stmt }); }
+  if (c.work.ncrp.length) { try { const m = ncrpModel(Object.assign({}, NCRPF, { cash: 0, ack: '' })); for (const n of m.N.values()) if (!n.exit && n.id !== 'VICTIM' && n.layer !== 0) add(n.id, { ifsc: n.ifsc, holder: n.holder, bank: n.bank, layer: n.layer, amount: n.in }); } catch (e) { console.warn(e); } }
+  return Array.from(seen.values()).map(r => { const info = r.ifsc ? GEO.info(r.ifsc) : null; const kr = r.ifsc ? keralaOf(info) : { is: null, district: '', how: '' };
+    const bank = r.bank || (info && info.bank) || (r.ifsc ? (IFSC_PREFIX[r.ifsc.slice(0, 4)] || '') : '');
+    return Object.assign(r, { info, kr, bank, branch: info && info.branch || '', state: info && info.state || '', kerala: kr.is === true ? 'Kerala' : kr.is === false ? 'Outside Kerala' : (r.ifsc ? 'Not resolved' : 'No IFSC'), kdistrict: kr.district || (kr.is ? 'Kerala (district not resolved)' : '') }); })
+    .sort((a, b) => b.amount - a.amount);
 }
 /* Every ATM withdrawal in the case (NCRP ATM rows + statement ATM debits). */
 function caseAtmRows() {

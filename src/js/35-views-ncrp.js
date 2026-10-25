@@ -15,7 +15,7 @@ const EXIT_BADGE = { ATM: 'ATM', CHEQUE: 'CHQ', AEPS: 'AEPS', POS: 'POS', CASH: 
 function txnMode(utr, remarks, bank) { const u = String(utr || '').toUpperCase(), t = (remarks || '') + ' ' + (bank || '');
   if (/\bUPI\b|phonepe|paytm|google\s*pay|gpay|bhim|amazon\s*pay|mobikwik|freecharge|cred\b|razorpay|cashfree|payu/i.test(t)) return 'UPI / wallet';
   if (/RTGS/i.test(t) || /^[A-Z]{4}R\d/.test(u)) return 'RTGS'; if (/NEFT/i.test(t) || /^[A-Z]{4}N\d/.test(u)) return 'NEFT'; if (/IMPS/i.test(t)) return 'IMPS'; if (/^\d{12}$/.test(u)) return 'IMPS / UPI'; if (/^[A-Z]{4}H\d/.test(u)) return 'NEFT'; return ''; }
-const ncrpBranch = ifsc => { const i = ifsc ? GEO.info(ifsc) : null; return i ? [i.branch, i.city || i.district, i.state].filter(Boolean).filter((v, k, a) => a.indexOf(v) === k).join(', ') : ''; };
+const ncrpBranch = ifsc => { const i = ifsc ? GEO.info(ifsc) : null; return i ? [i.branch, i.kdist || i.city || i.district, i.state].filter(Boolean).filter((v, k, a) => a.indexOf(v) === k).join(', ') : ''; };
 const ncrpDT = (ts, hasTime) => ts ? fmtDT(ts, hasTime) : '';
 
 function ncrpModel(f = NCRPF) {
