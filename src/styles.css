@@ -667,3 +667,16 @@ body .gk .gk-lq:not(.on){background:rgba(8,12,20,.85)!important;color:var(--lc)!
 .pt-box.redact{background:rgba(0,0,0,.75);border:1px dashed #ff4d5e}.pt-box.done{pointer-events:none;border:1px dashed #00ff9d;background:rgba(0,255,157,.1)}.pt-box.done.redact{background:rgba(0,0,0,.7)}
 .pt-side{position:sticky;top:0}.pt-ops{max-height:180px;overflow:auto}.pt-op{display:flex;justify-content:space-between;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line)}
 .pt-drop{padding:28px 18px}
+
+/* CDR analysis bars */
+.cda-bars{display:flex;align-items:flex-end;gap:3px;padding-top:6px}
+.cda-b{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center}
+.cda-s{width:100%;display:flex;align-items:flex-end}
+.cda-st{width:100%;display:flex;flex-direction:column-reverse;border-radius:3px 3px 0 0;overflow:hidden;min-height:0}
+.cda-st i{display:block;min-height:0}
+.cda-b span{font-size:10px;color:var(--dim);margin-top:3px}
+.cda-one{display:grid;grid-template-columns:1fr;gap:12px}
+#content .cda-one .card,#cdaB .card{min-width:0}
+#cdaB .mono{white-space:nowrap}
+#cdaB .tbl td{vertical-align:top}
+#cdaB .tbl td{white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis}
