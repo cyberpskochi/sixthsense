@@ -54,7 +54,7 @@ function cdaCellStats(rows, pred) {
     const k = cdaCell(r); if (!k || (pred && !pred(r))) continue;
     let x = m.get(k); if (!x) { x = { cell: k, addr: '', lat: null, lon: null, lac: '', n: 0, first: r.ts, last: r.ts, days: new Set() }; m.set(k, x); }
     x.n++; x.first = Math.min(x.first, r.ts); x.last = Math.max(x.last, r.ts); x.days.add(dayKey(r.ts));
-    if (!x.addr && r.addr) x.addr = r.addr; if (x.lat == null && r.lat != null) { x.lat = r.lat; x.lon = r.lon; } if (!x.lac && r.lac) x.lac = r.lac;
+    if (!x.addr && r.addr) x.addr = r.addr; if (r.cellSrc && (!x.src || r.cellSrc === 'DB~')) x.src = r.cellSrc; if (x.lat == null && r.lat != null) { x.lat = r.lat; x.lon = r.lon; } if (!x.lac && r.lac) x.lac = r.lac;
   }
   const l = Array.from(m.values()).sort((a, b) => b.n - a.n); const tot = sum(l, x => x.n); l.forEach(x => { x.pct = cdaPct(x.n, tot); x.d = x.days.size; }); return l;
 }
@@ -164,7 +164,7 @@ function cdaContactCols(X) {
     { label: 'Night events', w: 90, num: 1, get: x => x.night }, { label: 'Active days', w: 90, num: 1, get: x => x.days.size }, { label: 'First', w: 150, get: x => cdaT(x.first), sort: x => x.first }, { label: 'Last', w: 150, get: x => cdaT(x.last), sort: x => x.last }];
 }
 function cdaCellTable(l, empty) {
-  return simpleTable([{ label: 'Cell ID', html: x => `<b class="mono">${esc(x.cell)}</b>${x.lac ? `<div class="small dim">LAC ${esc(x.lac)}</div>` : ''}` }, { label: 'Site address (as given in CDR)', get: x => x.addr || '—' }, { label: 'Events', get: x => nfmt(x.n), num: 1 }, { label: '%', get: x => x.pct + '%', num: 1 }, { label: 'Days seen', get: x => x.d, num: 1 }, { label: 'First', get: x => cdaT(x.first) }, { label: 'Last', get: x => cdaT(x.last) }, { label: 'Map', html: x => x.lat != null || x.addr ? `<a class="btn-sm" target="_blank" rel="noopener noreferrer" href="${esc(gmapsUrl(x.addr || ('cell ' + x.cell), x.lat, x.lon))}">Map</a>` : '' }], l.slice(0, 40), { maxH: 380, empty });
+  return simpleTable([{ label: 'Cell ID', html: x => `<b class="mono">${esc(x.cell)}</b>${x.lac ? `<div class="small dim">LAC ${esc(x.lac)}</div>` : ''}` }, { label: 'Site address', html: x => esc(x.addr || '—') + (x.src === 'DB' ? ' <span class="badge b-blue" title="Located from the Cell ID database">DB</span>' : x.src === 'DB~' ? ' <span class="badge b-amber" title="Located from the Cell ID database by cell ID only (LAC not matched) — approximate, verify">DB approx</span>' : '') }, { label: 'Events', get: x => nfmt(x.n), num: 1 }, { label: '%', get: x => x.pct + '%', num: 1 }, { label: 'Days seen', get: x => x.d, num: 1 }, { label: 'First', get: x => cdaT(x.first) }, { label: 'Last', get: x => cdaT(x.last) }, { label: 'Map', html: x => x.lat != null || x.addr ? `<a class="btn-sm" target="_blank" rel="noopener noreferrer" href="${esc(gmapsUrl(x.addr || ('cell ' + x.cell), x.lat, x.lon))}">Map</a>` : '' }], l.slice(0, 40), { maxH: 380, empty });
 }
 function cdaLocation(X) {
   const day = cdaCellStats(X.rows, r => !cdaNight(cdaHr(r.ts))), night = cdaCellStats(X.rows, r => cdaNight(cdaHr(r.ts))), NS = cdaNights(X);
@@ -181,6 +181,12 @@ function cdaLocation(X) {
     <div class="card"><h4>Night cells <span class="dim small">(${String(CDA.nStart).padStart(2, '0')}:00–${String(CDA.nEnd).padStart(2, '0')}:00)</span></h4>${cdaCellTable(night, 'No night-time cell data.')}</div></div>
   <div class="card" style="margin-top:12px"><h4>Night-by-night stay <span class="dim small">(night of the date shown — main cell of each night)</span></h4>${simpleTable([{ label: 'Night of', get: x => x.night }, { label: 'Events', get: x => x.n, num: 1 }, { label: 'Main cell', html: x => `<b class="mono">${esc(x.main.cell)}</b>` }, { label: '% of night', get: x => x.pct + '%', num: 1 }, { label: 'Site address', get: x => x.main.addr || '—' }, { label: 'Other cells', get: x => x.others.length ? x.others.slice(0, 3).map(c => c.cell).join(', ') + (x.others.length > 3 ? ' +' + (x.others.length - 3) : '') : '—' }, { label: 'First', get: x => cdaT(x.first) }, { label: 'Last', get: x => cdaT(x.last) }], NS.nights, { maxH: 420, empty: 'No night-time events with a cell ID.' })}</div>
   ${roam.length ? `<div class="card" style="margin-top:12px"><h4>Roaming / circle values in the CDR</h4>${simpleTable([{ label: 'Roaming value', get: x => x[0] }, { label: 'Events', get: x => nfmt(x[1]), num: 1 }], roam, { maxH: 240 })}</div>` : ''}`;
+}
+function cdaCellRes(X, enr) {
+  const rows = X.rows.filter(r => cdaCell(r)); const cells = new Set(rows.map(cdaCell)); const withGeo = new Set(rows.filter(r => r.lat != null || r.addr).map(cdaCell));
+  const db = new Set(rows.filter(r => r.cellSrc === 'DB').map(cdaCell)), ap = new Set(rows.filter(r => r.cellSrc === 'DB~').map(cdaCell)); const miss = Array.from(cells).filter(k => !withGeo.has(k));
+  const m = CELLDB.meta || { total: 0 };
+  return `<div class="card" style="margin-bottom:12px"><h4>Cell resolution <span class="dim small">· Cell ID Database: ${nfmt(m.total || 0)} cells</span></h4><div class="row small">${badge(nfmt(cells.size) + ' distinct cells', 'gray')} ${badge(nfmt(cells.size - db.size - ap.size - miss.length) + ' located from the CDR itself', 'green')} ${badge(nfmt(db.size) + ' located from database', 'blue')} ${ap.size ? badge(nfmt(ap.size) + ' database, approximate', 'amber') : ''} ${badge(nfmt(miss.length) + ' not located', miss.length ? 'red' : 'gray')} <a data-v="celldb" style="cursor:pointer;color:var(--cy,#00e5ff)">Open Cell ID Database →</a></div>${!m.total ? '<div class="small dim" style="margin-top:6px">No tower list imported yet. Import the Kerala / Jio lists once at <b>Cell ID Database</b> and every CDR is located automatically.</div>' : ''}${miss.length ? `<div class="small dim" style="margin-top:6px">Not in database (first 12): <span class="mono">${esc(miss.slice(0, 12).join(', '))}</span></div>` : ''}</div>`;
 }
 function cdaDaysHtml(X) {
   const L = cdaDays(X);
@@ -252,19 +258,21 @@ VIEWS.cdrsum = async el => {
   if (!c.telecom.cdr.length) { el.innerHTML = pageHead('CDR Analysis', 'Call summary, day / night location, IMEI-wise and SMS analysis of every uploaded CDR.') + emptyState('Upload a CDR first.', `<button class="btn-p" id="toCdr">⇪ Upload CDR</button>`); $('#toCdr', el).onclick = () => go('up_cdr'); return; }
   if (CDA.num !== '*' && !tel.byTarget.has(CDA.num)) CDA.num = tel.targets[0].num;
   if (CDA.tab === 'loc') { try { await GEO.ready(); } catch { } }
-  const X = cdaCtx(); if (S.view !== 'cdrsum') return;
+  let enr = null; try { await CELLDB.loadSdr(); enr = await CELLDB.autoEnrich(); } catch (e) { console.warn(e); } if (S.view !== 'cdrsum') return;
+  const X = cdaCtx();
   const meta = c.telecom.meta || {};
   const tlabel = t => { const m = meta[t.num] || {}; const i = IX.numInfo.get(t.num); return t.num + ' · ' + (m.name || (i && i.links[0] && (i.links[0].label || i.links[0].role)) || 'not linked') + ' · ' + nfmt(t.n) + ' events'; };
   el.innerHTML = pageHead('CDR Analysis', 'Each CDR split into call summary, contacts, day / night location, date-wise activity, IMEI & SIM, and SMS. Locations are CDR / cell-site correlation only.', `<button id="cdaX" class="btn-p">⇩ Export all tabs (Excel)</button>`) +
     `<div class="card" style="padding:12px 16px;margin-bottom:12px"><div class="row"><b>Target</b><select id="cdaTg" style="min-width:340px">${tel.targets.length > 1 ? `<option value="*" ${CDA.num === '*' ? 'selected' : ''}>All numbers — combined (${nfmt(c.telecom.cdr.length)} events)</option>` : ''}${tel.targets.map(t => `<option value="${esc(t.num)}" ${CDA.num === t.num ? 'selected' : ''}>${esc(tlabel(t))}</option>`).join('')}</select><span class="small dim">${esc(cdaT(X.rows[0].ts))} → ${esc(cdaT(X.rows[X.rows.length - 1].ts))}</span></div></div>
     <div class="tabs">${CDA_TABS.map(([k, l]) => `<button data-tab="${k}" class="${CDA.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div><div id="cdaB"></div>`;
   const B = $('#cdaB', el);
+  B.addEventListener('click', e => { const a = e.target.closest('[data-v]'); if (a) go(a.dataset.v); });
   $$('[data-tab]', el).forEach(b => b.onclick = () => { CDA.tab = b.dataset.tab; go('cdrsum'); });
   $('#cdaTg', el).onchange = e => { CDA.num = e.target.value; go('cdrsum'); };
   $('#cdaX', el).onclick = () => { try { cdaExport(X); } catch (e) { console.error(e); toast('Export failed: ' + e.message, 'err'); } };
   const bindNums = () => $$('[data-num]', B).forEach(x => x.onclick = e => { e.preventDefault(); openNumber(x.dataset.num); });
   try {
-    if (CDA.tab === 'summary') B.innerHTML = cdaSummary(X);
+    if (CDA.tab === 'summary') { const sd = CDA.num !== '*' ? CELLDB.getSdr(CDA.num) : null; B.innerHTML = (sd ? sdrHtml(sd, 'Subscriber details (SDR) — ' + CDA.num) : '') + cdaSummary(X); }
     else if (CDA.tab === 'contacts') {
       B.innerHTML = cdaContactsHtml(X); const cols = cdaContactCols(X); const all = cdaContacts(X);
       const vt = vtable($('#cdaCT', B), { cols, rows: all, height: 480, onClick: r => openNumber(r.num) });
@@ -272,7 +280,7 @@ VIEWS.cdrsum = async el => {
       $('#cdaCx', B).onclick = () => exportTable('CDR contacts', cols, vt.rows());
     }
     else if (CDA.tab === 'loc') {
-      B.innerHTML = cdaLocation(X);
+      B.innerHTML = cdaCellRes(X, enr) + cdaLocation(X);
       $('#cdaNs', B).onchange = e => { CDA.nStart = +e.target.value; go('cdrsum'); }; $('#cdaNe', B).onchange = e => { CDA.nEnd = +e.target.value; go('cdrsum'); };
     }
     else if (CDA.tab === 'days') { B.innerHTML = cdaDaysHtml(X); const b = $('#cdaDx', B); if (b) b.onclick = () => { const L = cdaDays(X); exportTable('CDR date-wise', [{ label: 'Date', get: x => x.day }, { label: 'Events', get: x => x.n }, { label: 'Calls out', get: x => x.cOut }, { label: 'Calls in', get: x => x.cIn }, { label: 'SMS out', get: x => x.sOut }, { label: 'SMS in', get: x => x.sIn }, { label: 'Talk time (s)', get: x => x.dur }, { label: 'First cell', get: x => x.fCell }, { label: 'Last cell', get: x => x.zCell }], L); }; }

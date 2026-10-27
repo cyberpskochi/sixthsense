@@ -36,7 +36,7 @@ def build_rows(n_days=60, per_day=20, target='9400000001', imei1='35693803564380
 def main():
     srv = R.serve(); errs = R.errors
     with sync_playwright() as p:
-        b = p.chromium.launch(); ctx = b.new_context(viewport={'width': 1500, 'height': 950}, accept_downloads=True)
+        b = p.chromium.launch(); ctx = b.new_context(viewport={'width': 1500, 'height': 2100}, accept_downloads=True)
         ctx.route('https://cdn.jsdelivr.net/**', R.cdn); pg = ctx.new_page()
         pg.on('console', lambda m: m.type in ('error', 'warning') and errs.append(f'[{m.type}] {m.text}')); pg.on('pageerror', lambda e: errs.append(f'[pageerror] {e}'))
         pg.goto('http://127.0.0.1:8765/CFITS.html'); pg.wait_for_selector('#locName', timeout=20000)

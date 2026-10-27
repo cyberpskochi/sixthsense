@@ -158,7 +158,9 @@ function normCdr(grid, hdr, opts) {
     const dur = parseInt(String(cellText(get(row, 'duration'))).replace(/[^\d:]/g, '').split(':').reduce((s, x) => s * 60 + (+x || 0), 0)) || 0;
     out.push({ target: tgt, other, dir, kind, ts: d.ts + (opts.tzShiftMin || 0) * 60000, hasTime: d.hasTime, dur, cell: cellText(get(row, 'cellId')).replace(/\s/g, ''), lastCell: cellText(get(row, 'lastCell')).replace(/\s/g, ''), lac: cellText(get(row, 'lac')), imei: cellText(get(row, 'imei')).replace(/\D/g, ''), imsi: cellText(get(row, 'imsi')).replace(/\D/g, ''), roam: cellText(get(row, 'roaming')), op: cellText(get(row, 'operator')), addr: cellText(get(row, 'address')).slice(0, 160), lat: parseFloat(cellText(get(row, 'lat'))) || null, lon: parseFloat(cellText(get(row, 'lon'))) || null, src: { file: opts.fileName, sheet: grid.sheet, page: ref.page || null, row: ref.row } });
   }
-  return { rows: out, rejects, target };
+  let sdr = null; try { sdr = (typeof cdrSdr === 'function') ? cdrSdr(grid, hdr) : null; } catch { }
+  if (sdr) sdr.src = opts.fileName || '';
+  return { rows: out, rejects, target, sdr };
 }
 
 function normIpdr(grid, hdr, opts) {

@@ -87,6 +87,7 @@ function summariseQ(q) {
 
 async function commitQueued(q) {
   const c = S.cur; const impId = nextId('IMP'); let added = 0, dups = 0; const accts = [];
+  const sdrQueue = [];
   const rejects = [];
   for (const G of q.result) {
     if (G.skip || !G.res) continue; rejects.push(...(G.res.rejects || []));
@@ -132,6 +133,7 @@ async function commitQueued(q) {
       for (const r of G.res.rows) { const k = r.target + r.other + r.ts + r.dir; if (seen.has(k)) { dups++; continue; } seen.add(k); r.i = base++; r.imp = impId; c.telecom.cdr.push(r); added++; }
       accts.push(G.res.target || '');
       const tgt = G.res.target || normPhone(q.opts.target || '');
+      if (tgt && G.res.sdr) sdrQueue.push([tgt, G.res.sdr]);
       if (tgt && (q.opts.holder || q.opts.cdrRole || q.opts.linkAcct)) { c.telecom.meta = c.telecom.meta || {}; c.telecom.meta[tgt] = Object.assign(c.telecom.meta[tgt] || {}, { name: q.opts.holder || (c.telecom.meta[tgt] || {}).name || '', role: q.opts.cdrRole || '', type: q.opts.cdrType || '', acct: q.opts.linkAcct || '', imei: q.opts.imei || '' });
         if (!c.work.numbers.some(n => n.num === tgt)) c.work.numbers.push({ id: nextId('MOB'), num: tgt, role: q.opts.cdrRole || 'Unknown', source: 'CDR upload' + (q.opts.cdrType ? ' (' + q.opts.cdrType + ')' : ''), person: q.opts.holder || '', remarks: q.opts.imei ? 'IMEI trace ' + q.opts.imei : '', added: nowStamp() }); }
       if (tgt && q.opts.linkAcct) { const la = ensureAcct(q.opts.linkAcct, {}); if (!la.mobiles.includes(tgt) && !la.altMobiles.includes(tgt)) (q.opts.cdrType === 'linked' ? la.mobiles : la.altMobiles).push(tgt); }
@@ -162,6 +164,10 @@ async function commitQueued(q) {
   markDirty(...PARTS.filter(p => p !== 'audit'));
   await audit('Imported ' + q.kind, `${q.file.name} sha256=${q.hash.slice(0, 16)}… added=${added} dups=${dups} rejected=${rejects.length}`);
   q.status = 'imported'; q.imported = rec;
+  if (q.kind === 'cdr' && typeof CELLDB !== 'undefined') {
+    for (const [n, s] of sdrQueue) { await CELLDB.saveSdr(n, s); toast('Subscriber details (SDR) for ' + n + ' saved' + (s.name ? ' — ' + s.name : ''), 'ok', 5000); }
+    await CELLDB.afterCdrImport(q.result.flatMap(G => (G.res && G.res.rows) || []));
+  }
   return rec;
 }
 function dupKey(t) { return [isoDate(t.ts), t.hasTime ? fmtTime(t.ts) : '', t.dr, t.cr, t.bal ?? '', (t.utr || t.narr.slice(0, 40)).toUpperCase()].join('|'); }

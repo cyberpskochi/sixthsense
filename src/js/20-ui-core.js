@@ -8,7 +8,7 @@ const NAV = [
   ['REPORTS', 'doc', '#00e5ff', [['letters', 'letter', '94 BNSS Letters'], ['reports', 'doc', 'Reports & Export'], ['requisitions', 'mail', 'Requisitions'], ['tasks', 'check', 'Tasks']]]
 ];
 const NAV_TOP = [['hash', 'shield', 'HASH GENERATOR', '#b48cff'], ['nodal', 'phone', 'NODAL OFFICERS', '#34d399'], ['pdf', 'doc', 'PDF TOOLS', '#ff8a65']]; // top-level headings that open directly
-const NAV_SYS = [['cases', 'folder', 'Cases', '#2979ff'], ['backup', 'cloud', 'Drive Backup', '#2979ff'], ['users', 'ushield', 'Users & Access', '#ff2e88', 'admin'], ['settings', 'gear', 'Settings', '#8fb3c9']];
+const NAV_SYS = [['cases', 'folder', 'Cases', '#2979ff'], ['celldb', 'pin', 'Cell ID Database', '#00e5ff'], ['backup', 'cloud', 'Drive Backup', '#2979ff'], ['users', 'ushield', 'Users & Access', '#ff2e88', 'admin'], ['settings', 'gear', 'Settings', '#8fb3c9']];
 const NAV_BY = Object.fromEntries(NAV.flatMap(([g, ic, col, items]) => items.filter(x => x !== '-').map(x => [x[0], [x[0], x[1], x[2], col, g]])).concat(NAV_SYS.map(x => [x[0], x])).concat(NAV_TOP.map(x => [x[0], x])));
 NAV_BY.upload = NAV_BY.up_ncrp;
 const NAVOPEN = {};
@@ -57,7 +57,7 @@ function renderShell() {
   const gs = $('#gsearch'); if (gs) gs.addEventListener('keydown', e => { if (e.key === 'Enter' && gs.value.trim()) globalSearch(gs.value.trim()); });
 }
 function renderNav() {
-  const c = S.cur; const FREE = ['start', 'caseup', 'cases', 'settings', 'backup', 'users', 'nodal', 'hash', 'pdf'];
+  const c = S.cur; const FREE = ['start', 'caseup', 'cases', 'settings', 'backup', 'users', 'nodal', 'hash', 'pdf', 'celldb'];
   const quick = isQuick(c); const QUICK_OK = ['start', 'caseup', 'ncrp', 'letters', 'pdf']; // an NCRP-trail-only session shows just these
   const groups = NAV.map(([g, ic, col, items]) => [g, ic, col, quick ? items.filter(x => x !== '-' && QUICK_OK.includes(x[0])) : items]).filter(x => x[3].length);
   const cnt = { up_ncrp: c && c.work.ncrp.length ? nfmt(c.work.ncrp.length) : '', up_bank: c ? c.accts.filter(a => (IX.txByAcct.get(a.id) || []).length).length + '/' + c.accts.length : '', up_cdr: c && c.telecom.cdr.length ? uniq(c.telecom.cdr.map(r => r.target)).length : '', up_ip: c && c.ip.logs.length ? nfmt(c.ip.logs.length) : '', accounts: c ? c.accts.length : '', txns: c ? nfmt(c.txns.length) : '', users: isAdmin() && ADM.pending ? ADM.pending + ' new' : '', leads: '' };
@@ -81,7 +81,7 @@ function applyNavMode() {
 }
 function go(view, arg) {
   if (!Libs.done) { const el = $('#content'); if (el) el.innerHTML = `<div class="empty" style="margin-top:60px"><div class="spin"></div>Loading analysis modules…</div>`; Libs.load().then(() => go(view, arg)); return; }
-  const FREE = ['start', 'caseup', 'cases', 'settings', 'backup', 'users', 'nodal', 'hash', 'pdf'];
+  const FREE = ['start', 'caseup', 'cases', 'settings', 'backup', 'users', 'nodal', 'hash', 'pdf', 'celldb'];
   if (view === 'upload' || view === 'caseup') view = S.cur && !isQuick(S.cur) ? 'upload' : (view === 'caseup' ? 'caseup' : 'start'); // an open full case shows the complete upload centre
   if (view === 'dashboard' && isQuick(S.cur)) view = S.cur.work.ncrp.length ? 'ncrp' : 'start';
   if (!S.cur && !FREE.includes(view)) { toast(S.index.length ? 'Open a case first: click a case tile below.' : 'No case yet: click “＋ New case” or “▶ Load demo case” first.', 'warn', 4500); view = 'cases'; setTimeout(() => $$('#cNew,#cDemo,.tile').forEach(b => { b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 2400); }), 50); }
