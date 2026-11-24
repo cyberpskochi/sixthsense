@@ -18,14 +18,21 @@ function txnMode(utr, remarks, bank) { const u = String(utr || '').toUpperCase()
 const ncrpBranch = ifsc => { const i = ifsc ? GEO.info(ifsc) : null; return i ? [i.branch, i.kdist || i.city || i.district, i.state].filter(Boolean).filter((v, k, a) => a.indexOf(v) === k).join(', ') : ''; };
 const ncrpDT = (ts, hasTime) => ts ? fmtDT(ts, hasTime) : '';
 
-function ncrpModel(f = NCRPF) {
+const NCRP_MEMO = new Map(); // a few recent models (graph uses cash-outs on, letters / leads use them off)
+function ncrpModelKey(f) { const c = S.cur, w = c.work.ncrp; let h = w.length; for (let i = 0; i < w.length; i += Math.max(1, w.length >> 6)) h = (h * 31 + (w[i].layer ?? 7) + (w[i].amount || 0) + (w[i].hold || 0)) % 1e9;
+  return [c.meta.id, w.length, h, f.ack || '', f.cash ? 1 : 0, c.accts.length, c.accts.filter(a => a.layerNcrp === 0 || /complainant|victim/i.test(a.role || '')).length, GEO.loaded ? 1 : 0, (IX.acctByKey && IX.acctByKey.size) || 0].join('|'); }
+function ncrpModel(f = NCRPF) { // the model is rebuilt only when the NCRP rows, the complaint filter or the case accounts change
+  const key = ncrpModelKey(f); const hit = NCRP_MEMO.get(key); if (hit) return hit;
+  const m = ncrpModelBuild(f); NCRP_MEMO.set(key, m); while (NCRP_MEMO.size > 4) NCRP_MEMO.delete(NCRP_MEMO.keys().next().value); return m;
+}
+function ncrpModelBuild(f) {
   const c = S.cur; let rows = c.work.ncrp.slice();
   if (f.ack) rows = rows.filter(r => r.ackNo === f.ack);
   rows.sort((a, b) => (!!a.actOnly - !!b.actOnly) || (a.layer ?? 99) - (b.layer ?? 99) || (a.ts || 0) - (b.ts || 0));
   const disp = new Map(); const K = id => { if (!id) return ''; const k = acctKey(id); if (!disp.has(k)) disp.set(k, id); return disp.get(k); };
   const comp = c.accts.filter(a => a.layerNcrp === 0 || /complainant|victim/i.test(a.role || ''));
   const victimId = comp.length === 1 ? K(comp[0].acctNo) : 'VICTIM';
-  const N = new Map(), H = []; const hopByKey = new Map(); const issues = { orphan: [], assumed: [], noDetail: [], unlinked: [] };
+  const N = new Map(), H = []; const hopByKey = new Map(), hopsTo = new Map(); const HT = id => hopsTo.get(id) || []; const issues = { orphan: [], assumed: [], noDetail: [], unlinked: [] };
   const hasDisp = rows.some(r => r.disputed > 0);
   const node = (id, layer, o = {}, own = false) => {
     if (!id) return null; let n = N.get(id);
@@ -37,7 +44,7 @@ function ncrpModel(f = NCRPF) {
     const k = o.utr ? from + '>' + to + '>' + o.utr : null; let h = k ? hopByKey.get(k) : null;
     if (h) { for (const r of o.rows || []) if (!h.rows.includes(r)) h.rows.push(r); if (!h.ts && o.ts) { h.ts = o.ts; h.hasTime = !!o.hasTime; } if (!h.amount && o.amount) h.amount = o.amount; return h; }
     h = { id: 'H' + H.length, from, to, utr: o.utr || '', amount: round2(o.amount || 0), disputed: o.disputed || 0, ts: o.ts || null, hasTime: !!o.hasTime, layer: o.layer, kind: o.kind || 'money', action: o.action || '', basis: o.basis || '', rows: (o.rows || []).slice(), ifsc: o.ifsc || '' }; h.mode = txnMode(h.utr, (h.rows[0] || {}).remarks, (h.rows[0] || {}).merchant || (h.rows[0] || {}).toBank);
-    H.push(h); if (k) hopByKey.set(k, h); return h;
+    H.push(h); if (k) hopByKey.set(k, h); let ht = hopsTo.get(to); if (!ht) hopsTo.set(to, ht = []); ht.push(h); return h;
   };
   const amtOf = r => r.amount || r.disputed || 0;
   const pending = []; // "Money Transfer to" rows waiting for their layer N+1 credit
@@ -60,20 +67,20 @@ function ncrpModel(f = NCRPF) {
   const pendTo = groupBy(pending, p => p.to);
   let fraud = 0; const seenL1 = new Set();
   for (const r of rows) {
-    if (r.actOnly) { const ex = H.find(h => h.to === K(r.acctNo) && h.kind === 'money' && (!r.utr || normUtr(h.utr) === normUtr(r.utr))) || H.find(h => h.to === K(r.acctNo) && h.kind === 'money'); if (ex && !ex.rows.includes(r)) ex.rows.push(r); continue; }
+    if (r.actOnly) { const ex = HT(K(r.acctNo)).find(h => h.kind === 'money' && (!r.utr || normUtr(h.utr) === normUtr(r.utr))) || HT(K(r.acctNo)).find(h => h.kind === 'money'); if (ex && !ex.rows.includes(r)) ex.rows.push(r); continue; }
     const L = r.layer ?? 1; if (!K(r.acctNo)) continue;
     const inHop = { utr: r.utr, amount: L === 1 ? (r.disputed || amtOf(r)) : amtOf(r), ts: r.ts, hasTime: r.hasTime, layer: L, action: 'CREDIT', rows: [r] };
     if (L <= 1 || (K(r.fromAcct) && !pendTo.get(K(r.acctNo)))) {
       if (L <= 1 && hasDisp && !(r.disputed > 0) && !K(r.fromAcct)) { // an action-only Layer-1 row: attach to the existing credit
-        const ex = H.find(h => h.to === K(r.acctNo) && h.action === 'CREDIT' && (!r.utr || h.utr === r.utr)); if (ex) { ex.rows.push(r); continue; } }
+        const ex = HT(K(r.acctNo)).find(h => h.action === 'CREDIT' && (!r.utr || h.utr === r.utr)); if (ex) { ex.rows.push(r); continue; } }
       const src = K(r.fromAcct) || (L <= 1 ? victimId : null);
       if (src) { node(src, Math.max(0, L - 1), { bank: r.fmt === 'trail' ? r.actBank : '' }); const h = addHop(src, K(r.acctNo), Object.assign(inHop, { basis: L <= 1 ? 'Disputed transaction (complainant → Layer 1)' : r.fmt === 'trail' ? 'Money Transfer to — as reported' : 'From-account column of the report', disputed: r.disputed }));
         if (L <= 1) { const k = r.utr || h.id; if (!seenL1.has(k)) { seenL1.add(k); fraud += h.amount || 0; } } continue; }
     }
     // a row without its own UTR repeats an account already credited → attach to that credit
-    if (!r.utr) { const ex = H.find(h => h.to === K(r.acctNo) && h.kind === 'money'); if (ex) { if (!ex.rows.includes(r)) ex.rows.push(r); continue; } }
+    if (!r.utr) { const ex = HT(K(r.acctNo)).find(h => h.kind === 'money'); if (ex) { if (!ex.rows.includes(r)) ex.rows.push(r); continue; } }
     // already linked with the same UTR (several action rows repeat the same credit)
-    const same = r.utr && H.find(h => h.to === K(r.acctNo) && h.utr === r.utr && h.action === 'CREDIT'); if (same) { if (!same.rows.includes(r)) same.rows.push(r); continue; }
+    const same = r.utr && HT(K(r.acctNo)).find(h => h.utr === r.utr && h.action === 'CREDIT'); if (same) { if (!same.rows.includes(r)) same.rows.push(r); continue; }
     const cand = pendTo.get(K(r.acctNo)) || [];
     let p = cand.find(q => q.r.toUtr && r.utr && normUtr(q.r.toUtr) === normUtr(r.utr)), basis = 'Exact UTR match';
     if (!p) { const open = cand.filter(q => !q.hop);
@@ -102,7 +109,7 @@ function ncrpModel(f = NCRPF) {
   for (const h of H) {
     const k = h.from + '>' + h.to; let e = E.get(k);
     if (!e) { e = { source: h.from, target: h.to, amount: 0, n: 0, kind: h.kind, rows: [], hops: [] }; E.set(k, e); }
-    e.hops.push(h); e.amount = round2(e.amount + (h.amount || 0)); e.n++; for (const r of h.rows) if (!e.rows.includes(r)) e.rows.push(r);
+    e.hops.push(h); e.amount = round2(e.amount + (h.amount || 0)); e.n++; if (!e._rs) e._rs = new Set(); for (const r of h.rows) if (!e._rs.has(r)) { e._rs.add(r); e.rows.push(r); }
     const s = N.get(h.from), t = N.get(h.to); if (s) { s.hout.push(h); if (h.kind === 'money') s.out += h.amount || 0; } if (t) { t.hin.push(h); t.in += h.amount || 0; }
   }
   for (const e of E.values()) e.hops.sort((a, b) => (a.ts || 0) - (b.ts || 0));
@@ -169,7 +176,7 @@ VIEWS.ncrp = async el => {
       <span class="chip ${NCRPF.cash ? 'on' : ''}" id="fCash" style="cursor:pointer">ATM / cash-outs</span>
       <span class="small dim">States: ${esc(states.join(', ') || '—')}</span>
     </div></div>
-    <div id="nGraph" style="margin-bottom:14px"></div>
+    <div id="nBig"></div><div id="nGraph" style="margin-bottom:14px"></div>
     <div class="card"><div class="tabs" id="nTabs">${[['trail', 'Money trail (hop by hop)'], ['map', 'Map (by IFSC)'], ['layers', 'Layer summary'], ['banks', 'Bank summary'], ['check', 'Report check' + (issuesN ? ' ⚠' : '')], ['rows', 'NCRP rows']].map(([k, t]) => `<button data-t="${k}" class="${NCRPF.tab === k ? 'on' : ''}">${esc(t)}</button>`).join('')}</div><div id="nTab"></div></div>`;
   $('#nImp', el).onclick = () => go(isQuick(c) ? 'start' : 'up_ncrp');
   $('#fAck', el).onchange = e => { NCRPF.ack = e.target.value; go('ncrp'); };
@@ -185,6 +192,18 @@ VIEWS.ncrp = async el => {
     const up = id => { if (keep.has('u' + id)) return; keep.add('u' + id); keep.add(id); (byT.get(id) || []).forEach(e => up(e.source)); };
     const down = id => { if (keep.has('d' + id)) return; keep.add('d' + id); keep.add(id); (byS.get(id) || []).forEach(e => { const t = m.N.get(e.target); if (t && t.exit) keep.add(t.id); }); };
     all.filter(n => n.bank === NCRPF.bank).forEach(n => { up(n.id); down(n.id); }); show = show.filter(n => keep.has(n.id)); }
+  // very large trails: draw the first layers only (a graph of thousands of boxes freezes the browser); everything else stays in the tables
+  const BIG_N = 600; let autoL = 0;
+  if (!NCRPF.maxL && !NCRPF.allL && show.length > BIG_N) {
+    for (let k = 1; k <= maxL; k++) { if (all.filter(n => n.layer != null && n.layer <= k).length > BIG_N) { autoL = Math.max(1, k - 1); break; } }
+    if (autoL) show = show.filter(n => n.layer != null && n.layer <= autoL);
+  }
+  if (autoL || (NCRPF.allL && all.length > BIG_N)) {
+    $('#nBig', el).innerHTML = `<div class="notice warn" style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span>${autoL ? `<b>Large trail:</b> ${nfmt(accts.length)} accounts in ${maxL} layers. To keep the screen responsive the graph shows <b>Layer 1${autoL > 1 ? '–' + autoL : ''}</b> (${nfmt(show.length)} boxes). All layers are in the tables below, the letters and Export.` : `<b>All ${nfmt(all.length)} boxes drawn</b> — the graph may be slow. Use “Show layers up to”, Bank or Focus path for a smaller picture.`}</span>
+      ${autoL ? `<button class="btn-sm" id="nAllL">Draw all layers anyway</button>` : `<button class="btn-sm" id="nFewL">Draw fewer layers</button>`}</div>`;
+    if ($('#nAllL', el)) $('#nAllL', el).onclick = () => { NCRPF.allL = 1; go('ncrp'); };
+    if ($('#nFewL', el)) $('#nFewL', el).onclick = () => { NCRPF.allL = 0; go('ncrp'); };
+  }
   const cut = (s, k) => { s = String(s || ''); return s.length > k ? s.slice(0, k - 1) + '…' : s; };
   const nodes = show.map(n => {
     if (n.exit) { const h0 = n.rows[0] || {}; const when = n.rows.length === 1 ? ncrpDT(h0.toTs || h0.ts, h0.toTs ? true : h0.hasTime) : n.rows.length + (n.exit === 'ATM' ? ' withdrawals' : ' transactions');
@@ -231,7 +250,7 @@ VIEWS.ncrp = async el => {
       host.innerHTML = `<div class="row sb" style="margin-bottom:10px;flex-wrap:wrap"><div class="row" style="gap:6px;flex-wrap:wrap"><span class="chip ${!q0 ? 'on' : ''}" data-tl="0">All layers</span>${Ls.map(l => `<span class="chip ${q0 === l ? 'on' : ''}" data-tl="${l}" style="--c:${nlc(l)}">Layer ${l}</span>`).join('')}</div><input id="nTq" placeholder="Filter by account, UTR, bank…" style="width:260px"></div><div id="nTt"></div>`;
       const draw = () => { const q = ($('#nTq', host).value || '').toUpperCase().replace(/\s/g, ''); const rs = !q ? hs : hs.filter(h => { const t = m.N.get(h.to) || {}, s = m.N.get(h.from) || {}; return (h.from + h.to + h.utr + (t.bank || '') + (s.bank || '') + (t.ifsc || '') + ncrpBranch(t.ifsc)).toUpperCase().replace(/\s/g, '').includes(q); });
         $('#nTt', host).innerHTML = simpleTable(hopCols, rs, { maxH: 520, click: 1, empty: 'No hops for this filter.' }); bindRows($('#nTt', host), rs, h => { const e = m.E.get(h.from + '>' + h.to); if (e) ncrpEdgeModal(m, e, h); }); };
-      $$('[data-tl]', host).forEach(b => b.onclick = () => { NCRPF.tl = +b.dataset.tl; drawTab(); }); $('#nTq', host).oninput = draw; draw();
+      $$('[data-tl]', host).forEach(b => b.onclick = () => { NCRPF.tl = +b.dataset.tl; drawTab(); }); let tq; $('#nTq', host).oninput = () => { clearTimeout(tq); tq = setTimeout(draw, 300); }; draw();
     } else if (NCRPF.tab === 'map') {
       const pts = ncrpGeoPoints(m); const cl = ncrpGeoClusters(m); const noLoc = all.filter(n => !n.exit && !n.unknown && n.id !== 'VICTIM' && !pts.some(p => p.n === n));
       const tilesOn = !!S.prefs.mapTiles;
@@ -280,8 +299,9 @@ VIEWS.ncrp = async el => {
       const cols = [{ label: 'Ack No.', k: 'ackNo' }, { label: 'Layer', k: 'layer' }, { label: 'Account / wallet', k: 'acctNo' }, { label: 'Bank', k: 'bank' }, { label: 'UTR', k: 'utr' }, { label: 'Date', get: r => r.ts ? fmtDT(r.ts, r.hasTime) : '' }, { label: 'Amount', html: r => inr(r.amount || r.disputed), num: 1, x: r => r.amount || r.disputed },
         { label: 'Action taken', get: r => r.status || ACT_NAME[r.action] || '' }, { label: 'To account', k: 'toAcct' }, { label: 'IFSC', get: r => r.toIfsc || r.ifsc }, { label: 'Onward UTR', k: 'toUtr' }, { label: 'Onward amt', html: r => r.toAmount ? inr(r.toAmount) : '', num: 1, x: r => r.toAmount }, { label: 'ATM ID / place', get: r => [r.atmId, r.atmPlace].filter(Boolean).join(' · ') }, { label: 'Hold', html: r => r.hold ? inr(r.hold) : '', num: 1, x: r => r.hold }, { label: 'Source row', get: r => r.src ? (r.src.file || '') + ' r' + (r.src.row || '') : '' }];
       host.innerHTML = `<div class="row sb" style="margin-bottom:8px"><span class="small dim">${nfmt(m.rows.length)} rows exactly as imported</span><input id="nQ" placeholder="Filter rows…" style="width:240px"></div><div id="nRows"></div>`;
-      const draw = () => { const q = ($('#nQ', host).value || '').toLowerCase(); const rs = m.rows.filter(r => !q || JSON.stringify(r).toLowerCase().includes(q)); $('#nRows', host).innerHTML = simpleTable(cols, rs.slice(0, 2000), { maxH: 460 }); };
-      $('#nQ', host).oninput = draw; draw();
+      const txt = new Map(); const tx = r => { let t = txt.get(r); if (t == null) { t = [r.ackNo, r.layer, r.acctNo, r.bank, r.utr, r.toAcct, r.toUtr, r.ifsc, r.toIfsc, r.status, r.atmId, r.atmPlace, r.amount, r.toAmount, r.hold, r.remarks].join(' ').toLowerCase(); txt.set(r, t); } return t; };
+      const draw = () => { const q = ($('#nQ', host).value || '').toLowerCase(); const rs = m.rows.filter(r => !q || tx(r).includes(q)); $('#nRows', host).innerHTML = simpleTable(cols, rs.slice(0, 2000), { maxH: 460 }); };
+      let tq; $('#nQ', host).oninput = () => { clearTimeout(tq); tq = setTimeout(draw, 350); }; draw();
     }
   };
   $$('#nTabs button', el).forEach(b => b.onclick = () => { NCRPF.tab = b.dataset.t; drawTab(); }); drawTab();

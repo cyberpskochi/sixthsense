@@ -143,7 +143,11 @@ function normPhone(v) {
 const isMobile = d => /^[6-9]\d{9}$/.test(d);
 const isServiceNo = d => !d || d.length < 8 || /^(1800|1860|140|155|1\d{2,4}$)/.test(d);
 function normAcct(v) { return String(v ?? '').toUpperCase().replace(/[^0-9A-Z]/g, ''); }
-function acctKey(v) { const s = normAcct(v); return /^\d+$/.test(s) ? s.replace(/^0+/, '') : s; }
+const ACCT_KEY_MEMO = new Map();
+function acctKey(v) { // memoised: called millions of times on large NCRP trails
+  if (v == null || v === '') return ''; const raw = typeof v === 'string' ? v : String(v); let k = ACCT_KEY_MEMO.get(raw); if (k !== undefined) return k;
+  const s = normAcct(raw); k = /^\d+$/.test(s) ? s.replace(/^0+/, '') : s;
+  if (ACCT_KEY_MEMO.size > 300000) ACCT_KEY_MEMO.clear(); ACCT_KEY_MEMO.set(raw, k); return k; }
 function maskedMatch(masked, full) { // "XXXXXX1234" vs full number
   const m = normAcct(masked).replace(/[X*]+/g, '*'); if (!m.includes('*')) return false;
   const tail = m.split('*').pop(); return tail.length >= 4 && normAcct(full).endsWith(tail);

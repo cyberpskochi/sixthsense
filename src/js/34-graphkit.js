@@ -2,9 +2,16 @@
    Used by the Network Graph and the NCRP Graph. Layouts: Tree ↓, Tree →, Network (force), Radial.
    Node style: cards (boxes with layer badge) or dots. Search, focus-on-path, zoom, fit, fullscreen, PNG. */
 const GK_STATE = {};
+const GK_LIVE = new Map(); // key -> live cytoscape instance (destroyed on re-mount / view change so render loops never pile up)
+const GK_BIG = 350;        // above this many nodes: dots, no arrow labels, lighter rendering (cards stay available on request)
 const GraphKit = {
+  killAll() { for (const cy of GK_LIVE.values()) { try { cy.destroy(); } catch { } } GK_LIVE.clear(); },
+  kill(key) { const cy = GK_LIVE.get(key); if (cy) { try { cy.destroy(); } catch { } GK_LIVE.delete(key); } },
   mount(host, opt) {
+    GraphKit.kill(opt.key); for (const [k, c] of GK_LIVE) { const ct = c.container && c.container(); if (!ct || !ct.isConnected) GraphKit.kill(k); }
+    const big = opt.nodes.length > GK_BIG;
     const st = GK_STATE[opt.key] = Object.assign({ layout: opt.defaultLayout || 'tree', style: 'auto', labels: true }, GK_STATE[opt.key] || {});
+    if (big && st.bigSet !== opt.nodes.length) { st.bigSet = opt.nodes.length; if (st.style === 'auto') st.style = 'dots'; st.labels = false; }
     const lay = [['tree', 'flow', 'Tree ↓'], ['lr', 'list', 'Tree →'], ['net', 'nodes', 'Network'], ['radial', 'globe', 'Radial']];
     host.innerHTML = `<div class="gk" id="gkWrap">
       <div class="gk-bar">
@@ -22,17 +29,18 @@ const GraphKit = {
     if (typeof cytoscape === 'undefined') { $('#gkCv', host).innerHTML = emptyState('Graph library not loaded.'); return null; }
     if (!opt.nodes.length) { $('#gkCv', host).innerHTML = emptyState(opt.empty || 'Nothing to draw yet.'); return null; }
     const ids = new Set(opt.nodes.map(n => n.id));
-    const els = opt.nodes.map(n => ({ data: Object.assign({ size: 26, color: '#2f9bff', sub: '', badge: '' }, n, { card: n.card || [n.badge ? '[' + n.badge + ']  ' + n.label : n.label, n.sub || ''].filter(Boolean).join('\n'), ch: n.ch || 54, cw: n.cw || 196, svg: GraphKit.cardSvg(n.cardLines || [n.label, n.sub].filter(Boolean), n.badge || '', n.color || '#2f9bff', n.cw || 196, n.ch || 54) }) }))
+    const els = opt.nodes.map(n => ({ data: Object.assign({ size: 26, color: '#2f9bff', sub: '', badge: '' }, n, { card: n.card || [n.badge ? '[' + n.badge + ']  ' + n.label : n.label, n.sub || ''].filter(Boolean).join('\n'), ch: n.ch || 54, cw: n.cw || 196, _cl: n.cardLines || [n.label, n.sub].filter(Boolean) }) }))
       .concat(opt.edges.filter(e => ids.has(e.source) && ids.has(e.target) && e.source !== e.target).map((e, i) => ({ data: Object.assign({ id: 'e' + i, color: '#00e5ff', w: 1.6, label: '' }, e) })));
     const cardsOn = () => st.style === 'cards' || (st.style === 'auto' && ['tree', 'lr'].includes(st.layout));
-    const cy = cytoscape({ container: $('#gkCv', host), elements: els, minZoom: 0.05, maxZoom: 3,
+    const cy = cytoscape({ container: $('#gkCv', host), elements: els, minZoom: 0.02, maxZoom: 3,
+      textureOnViewport: big, hideEdgesOnViewport: big, hideLabelsOnViewport: big, motionBlur: false, pixelRatio: big ? 1 : 'auto',
       style: [
         { selector: 'node', style: { 'background-color': 'data(color)', label: 'data(label)', color: '#dff6ff', 'font-size': 10, 'font-weight': 600, 'text-valign': 'center', 'text-halign': 'right', 'text-margin-x': 6, width: 'data(size)', height: 'data(size)', 'border-width': 2, 'border-color': '#070d1a', 'text-outline-color': '#070d1a', 'text-outline-width': 2 } },
         { selector: 'node.card', style: { shape: 'round-rectangle', width: 'data(cw)', height: 'data(ch)', 'background-color': '#0f1b31', 'border-color': 'data(color)', 'border-width': 2, label: 'data(card)', 'text-wrap': 'wrap', 'text-max-width': 'data(cw)', 'text-halign': 'center', 'text-margin-x': 0, 'font-size': 10.5, 'line-height': 1.35, 'text-outline-width': 0, color: '#e6f4ff' } },
         { selector: 'node.card[svg]', style: { label: '', 'background-image': 'data(svg)', 'background-fit': 'none', 'background-width': 'data(cw)', 'background-height': 'data(ch)', 'background-clip': 'node', 'background-image-smoothing': 'yes', 'background-image-containment': 'inside' } },
         { selector: 'node[shape]', style: { shape: 'data(shape)' } },
         { selector: 'node.card[shape]', style: { shape: 'round-rectangle' } },
-        { selector: 'edge', style: { width: 'data(w)', 'line-color': 'data(color)', 'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.9, 'curve-style': 'bezier', opacity: .85 } },
+        { selector: 'edge', style: { width: 'data(w)', 'line-color': 'data(color)', 'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.9, 'curve-style': big ? 'straight' : 'bezier', opacity: .85 } },
         { selector: 'edge[dash]', style: { 'line-style': 'dashed', 'target-arrow-shape': 'none' } },
         { selector: 'edge.lbl[label]', style: { label: 'data(label)', 'text-events': 'yes', 'text-wrap': 'wrap', 'font-size': 9, color: '#070d1a', 'text-rotation': 'autorotate', 'text-background-color': '#dff6ff', 'text-background-opacity': 1, 'text-background-padding': 2, 'text-background-shape': 'round-rectangle', 'text-border-color': 'data(color)', 'text-border-width': 1, 'text-border-opacity': 1 } },
         { selector: 'node.hdr', style: { shape: 'round-rectangle', width: 'data(cw)', height: 34, 'background-color': 'data(color)', 'background-opacity': 0.14, 'border-width': 1, 'border-color': 'data(color)', label: 'data(label)', color: 'data(color)', 'font-size': 12, 'font-weight': 800, 'text-valign': 'center', 'text-halign': 'center', 'text-margin-x': 0, 'text-wrap': 'wrap', 'text-max-width': 'data(cw)', 'text-outline-width': 0, events: 'no' } },
@@ -43,7 +51,10 @@ const GraphKit = {
         { selector: 'edge:selected', style: { 'line-color': '#ffffff', 'target-arrow-color': '#ffffff', width: 5 } },
         { selector: '.hit', style: { 'border-color': '#ff2e88', 'border-width': 5 } },
         { selector: 'node:selected', style: { 'border-color': '#ffffff', 'border-width': 4 } }] });
-    const applyStyle = () => { cy.nodes().not('.hdr').toggleClass('card', cardsOn()); cy.edges().toggleClass('lbl', !!st.labels); };
+    GK_LIVE.set(opt.key, cy);
+    const applyStyle = () => { cy.batch(() => { const on = cardsOn(); const ns = cy.nodes().not('.hdr');
+      if (on) ns.forEach(n => { if (!n.data('svg')) { const d = n.data(); n.data('svg', GraphKit.cardSvg(d._cl, d.badge || '', d.color || '#2f9bff', d.cw || 196, d.ch || 54)); } });
+      ns.toggleClass('card', on); cy.edges().toggleClass('lbl', !!st.labels); }); };
     const runLayout = () => {
       cy.remove('.hdr'); applyStyle(); const card = cardsOn();
       if (st.layout === 'net') cy.layout({ name: 'cose', animate: false, nodeRepulsion: () => card ? 60000 : 14000, idealEdgeLength: () => card ? 220 : 110, nodeOverlap: 20, componentSpacing: 90, padding: 30, randomize: true }).run();
@@ -73,9 +84,9 @@ const GraphKit = {
     document.addEventListener('keydown', onKey);
     $$('.gk-lq', host).forEach(b => b.onclick = () => { const k = b.dataset.lk; hist.push({ t: 'layer', k, was: hidden.has(k) }); if (hidden.has(k)) hidden.delete(k); else hidden.add(k); syncSq(); applyCut(); syncUndo(); });
     $('#gkCut', host).onclick = () => { const sel = cy.$(':selected'); if (!sel.length) return toast('Click an account or an amount box first (Shift+click to select several).', 'warn'); hist.push({ t: 'cut', ids: sel.map(x => x.id()) }); sel.forEach(x => x.data('_cut', 1)); sel.unselect(); applyCut(); syncUndo(); toast(sel.length + ' item(s) hidden — “Show all” brings them back', 'ok', 2500); };
-    $$('[data-lay]', host).forEach(b => b.onclick = () => { st.layout = b.dataset.lay; st.style = 'auto'; $$('[data-lay]', host).forEach(x => x.classList.toggle('on', x === b)); syncSty(); runLayout(); });
+    $$('[data-lay]', host).forEach(b => b.onclick = () => { st.layout = b.dataset.lay; st.style = big ? (cardsOn() ? 'cards' : 'dots') : 'auto'; $$('[data-lay]', host).forEach(x => x.classList.toggle('on', x === b)); syncSty(); runLayout(); });
     const syncSty = () => { $$('[data-sty]', host).forEach(x => x.classList.toggle('on', (x.dataset.sty === 'cards') === cardsOn())); };
-    $$('[data-sty]', host).forEach(b => b.onclick = () => { st.style = b.dataset.sty; syncSty(); runLayout(); });
+    $$('[data-sty]', host).forEach(b => b.onclick = () => { if (big && b.dataset.sty === 'cards' && !cardsOn()) toast(`Large graph (${nfmt(opt.nodes.length)} boxes): cards may be slow — use “Show layers up to” or Focus path for a smaller picture.`, 'warn', 5000); st.style = b.dataset.sty; syncSty(); runLayout(); });
     $('[data-lbl]', host).onclick = e => { st.labels = !st.labels; e.currentTarget.classList.toggle('on', st.labels); applyStyle(); };
     const find = () => {
       const q = $('#gkQ', host).value.trim().toUpperCase().replace(/\s/g, ''); cy.nodes().removeClass('hit'); if (!q) return;

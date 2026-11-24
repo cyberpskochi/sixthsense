@@ -13,7 +13,7 @@ const NAV_BY = Object.fromEntries(NAV.flatMap(([g, ic, col, items]) => items.fil
 NAV_BY.upload = NAV_BY.up_ncrp;
 const NAVOPEN = {};
 const VIEWS = {}; let CHARTS = [];
-function killCharts() { CHARTS.forEach(c => { try { c.destroy(); } catch {} }); CHARTS = []; }
+function killCharts() { CHARTS.forEach(c => { try { c.destroy(); } catch {} }); CHARTS = []; if (typeof GraphKit !== 'undefined' && GraphKit.killAll) GraphKit.killAll(); }
 function mkChart(canvas, cfg) {
   if (typeof Chart === 'undefined') return null;
   Chart.defaults.color = '#8fb3c9'; Chart.defaults.borderColor = 'rgba(0,229,255,.12)'; Chart.defaults.font.family = 'Rajdhani,Segoe UI,system-ui,sans-serif'; Chart.defaults.font.size = 12;
@@ -129,6 +129,8 @@ function vtable(host, opt) {
 }
 function simpleTable(cols, rows, opt = {}) {
   if (!rows.length) return emptyState(opt.empty || 'No records.');
+  const cap = opt.limit === 0 ? 0 : (opt.limit || 1500); // very long tables freeze the browser: show the first rows, the rest via filter / export
+  if (cap && rows.length > cap) return simpleTable(cols, rows.slice(0, cap), Object.assign({}, opt, { limit: 0 })) + `<div class="small dim" style="margin-top:6px">Showing the first ${nfmt(cap)} of ${nfmt(rows.length)} rows — use the filter or Export to Excel for all rows.</div>`;
   return `<div class="tbl-wrap" style="max-height:${opt.maxH || 520}px"><table class="tbl"><thead><tr>${cols.map(c => `<th class="${c.num ? 'num' : ''}">${esc(c.label)}</th>`).join('')}</tr></thead><tbody>${rows.map((r, i) => `<tr class="${opt.click ? 'click' : ''}" data-i="${i}">${cols.map(c => `<td class="${c.num ? 'num' : ''}">${c.html ? c.html(r) : esc(c.get ? c.get(r) : r[c.k])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 function bindRows(host, rows, fn) { $$('tr.click', host).forEach(tr => tr.onclick = e => { if (e.target.closest('button,a,input,select')) return; fn(rows[+tr.dataset.i]); }); }
@@ -176,7 +178,7 @@ setInterval(async () => { // optional auto-backup (explicitly enabled only)
 async function lockApp(reason) {
   try { await saveNow(); } catch {}
   try { await Vault.forget(); } catch {}
-  Vault.lock(); GEO.reset(); NODAL.reset(); S.cur = null; S.derived = null; S.index = []; killCharts(); $('#modalRoot').innerHTML = '';
+  Vault.lock(); GEO.reset(); NODAL.reset(); S.cur = null; S.derived = null; S.index = []; NCRP_MEMO.clear(); ACCT_KEY_MEMO.clear(); killCharts(); $('#modalRoot').innerHTML = '';
   $('#app').innerHTML = ''; $('#app').hidden = true; showVaultScreen(reason, true);
 }
 window.addEventListener('beforeunload', e => { if (S.dirty.size) { saveNow(); e.preventDefault(); e.returnValue = ''; } });
